@@ -15,6 +15,7 @@ const App = {
   cuentasExport: {},    // "mensual"|"acumulado" -> cuentas parseadas
   resultados: {},       // archivoId -> { resumen, workbookBuffer }
   aprobadosBuffers: {}, // archivoId -> ArrayBuffer (subido en la revisión final)
+  validaciones: {},     // archivoId -> resultado de validarRecalculado
   logLineas: [],
 };
 
@@ -213,12 +214,30 @@ async function procesarPeriodo() {
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(buffer);
 
+      // Los errores que el archivo YA tenía antes de que lo tocáramos: son la línea de base
+      // contra la que después se comparan los del archivo aprobado, para distinguir un
+      // problema nuevo de uno viejo sin depender de una lista escrita a mano.
+      const erroresPrevios = buscarCeldasEnError(wb);
+
       const cuentasExport = App.cuentasExport[a.periodo];
-      const { resumen } = procesarMaestroTFBR({ wb, cuentasExport, campoSaldo: a.campoSaldo, log });
+      const { resumen, planDeCuentas, escritas } =
+        procesarMaestroTFBR({ wb, cuentasExport, campoSaldo: a.campoSaldo, log });
+
+      // el TC de cierre y la cifra de dif de cambio solo existen en uno de los 4 archivos:
+      // escribirDatosDelPeriodo se fija solo si este los tiene, y avisa lo que no pudo cargar
+      const periodoDatos = escribirDatosDelPeriodo(wb, {
+        periodo: document.getElementById("periodoInput").value.trim(),
+        tcCierre: document.getElementById("tcCierreInput").value.trim(),
+        difCambioMes: document.getElementById("difCambioInput").value.trim(),
+      }, log);
+
       aplicarFixesAprobados(wb, a.id, log);
 
       const outBuffer = await wb.xlsx.writeBuffer();
-      App.resultados[a.id] = { resumen, workbookBuffer: outBuffer };
+      App.resultados[a.id] = {
+        resumen, periodoDatos, planDeCuentas, escritas, erroresPrevios,
+        workbookBuffer: outBuffer,
+      };
     }
     pintarResultado();
     mostrar("cardResultado", true);
@@ -245,11 +264,28 @@ function pintarResultado() {
     const badgeTxto = s.sinMapear.length ? `${s.sinMapear.length} sin mapear` : "OK";
     const div = document.createElement("div");
     div.style.marginBottom = "14px";
+    let extra = "";
+    if (s.sinMapear.length) {
+      extra += `<br><span class="footer-note">Sin mapear (no entran en ningún total): ` +
+        s.sinMapear.map(c => `${c.codigo} ${c.nombre}`).join(", ") + `</span>`;
+    }
+    if (s.duplicadas && s.duplicadas.length) {
+      extra += `<br><span class="footer-note">⚠ Códigos repetidos en el plan de cuentas — ` +
+        `solo una de cada par levanta el importe, la otra queda en cero: ` +
+        s.duplicadas.map(d => `${d.codigo} (filas ${d.filaPrevia} y ${d.fila})`).join(", ") +
+        `</span>`;
+    }
+    for (const h of (r.periodoDatos ? r.periodoDatos.hecho : [])) {
+      extra += `<br><span class="footer-note">✓ ${h}</span>`;
+    }
+    for (const p of (r.periodoDatos ? r.periodoDatos.pendiente : [])) {
+      extra += `<br><span class="footer-note">⚠ ${p}</span>`;
+    }
     div.innerHTML = `
       <b>${a.label}</b> <span class="badge ${badgeClase}">${badgeTxto}</span><br>
       <span class="footer-note">
         ${s.cuentasEscritas} de ${s.cuentasExport} cuentas escritas · total $ ${s.totalEscrito.toFixed(2)}
-      </span>`;
+      </span>${extra}`;
     cont.appendChild(div);
   }
 
@@ -311,14 +347,44 @@ async function onCierreArchivo(a, ev) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
     if (!wb.getWorksheet("SALDOS")) throw new Error("no tiene una hoja 'SALDOS'.");
-    App.aprobadosBuffers[a.id] = buffer;
-    txt.textContent = `${a.label}: ${file.name} ✓`;
+
+    // Recién acá los controles valen: este archivo ya pasó por Excel, así que las fórmulas
+    // traen los números de este mes y no los del anterior.
+    const r = App.resultados[a.id];
+    if (!r) throw new Error("todavía no se procesó este archivo en esta corrida.");
+    const v = validarRecalculado(wb, {
+      planDeCuentas: r.planDeCuentas,
+      escritas: r.escritas,
+      erroresPrevios: r.erroresPrevios,
+    });
+    App.validaciones[a.id] = v;
+
+    const lineas = v.controles.map(c =>
+      `${c.pasa ? "✓" : (c.soloAviso ? "⚠" : "✗")} ${c.nombre} — ${c.detalle}`).join("<br>");
+    txt.innerHTML = `<b>${a.label}: ${file.name}</b><br>` +
+      `<span class="footer-note">${lineas}</span>`;
+
+    if (v.pasa) {
+      App.aprobadosBuffers[a.id] = buffer;
+    } else {
+      delete App.aprobadosBuffers[a.id];
+    }
   } catch (e) {
     txt.textContent = `${a.label}: no pude leerlo (${e.message}).`;
     delete App.aprobadosBuffers[a.id];
+    delete App.validaciones[a.id];
   }
-  document.getElementById("btnCerrarMes").disabled =
-    Object.keys(App.aprobadosBuffers).length !== ARCHIVOS_TFBR.length;
+
+  const todosOk = Object.keys(App.aprobadosBuffers).length === ARCHIVOS_TFBR.length;
+  document.getElementById("btnCerrarMes").disabled = !todosOk;
+  const fallan = ARCHIVOS_TFBR.filter(x => App.validaciones[x.id] && !App.validaciones[x.id].pasa);
+  if (fallan.length) {
+    estadoUi("cierreStatus",
+      `No se puede cerrar el mes: ${fallan.map(x => x.label).join(", ")} ` +
+      `${fallan.length === 1 ? "no pasa" : "no pasan"} los controles. Revisá el detalle arriba.`, "bad");
+  } else if (todosOk) {
+    estadoUi("cierreStatus", "Los 4 archivos pasaron los controles.", "ok");
+  }
 }
 
 async function cerrarMes() {
@@ -350,6 +416,7 @@ async function cerrarMes() {
     App.altaBuffers = {};
     App.resultados = {};
     App.cuentasExport = {};
+    App.validaciones = {};
     await revisarMaestrosExistentes();
   } catch (e) {
     estadoUi("cierreStatus", "No pude cerrar el mes: " + e.message, "bad");

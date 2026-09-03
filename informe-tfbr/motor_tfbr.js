@@ -17,12 +17,14 @@
 function emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo) {
   const matcheadas = []; // [{texto, saldo}] listas para escribir en el staging
   const sinMapear = [];  // cuentas del export sin fila correspondiente en el maestro
+  const escritas = {};   // codigo -> saldo escrito, para el control cuenta por cuenta
   for (const c of cuentasExport) {
     const enPlan = planDeCuentas[c.codigo];
     if (!enPlan) { sinMapear.push(c); continue; }
     matcheadas.push({ texto: enPlan.texto, saldo: c[campoSaldo] });
+    escritas[c.codigo] = c[campoSaldo];
   }
-  return { matcheadas, sinMapear };
+  return { matcheadas, sinMapear, escritas };
 }
 
 // Limpia el rango de staging completo (evita que queden filas de un mes anterior con más
@@ -58,10 +60,17 @@ function escribirStaging(wb, layout, matcheadas, log = () => {}) {
 // quien llama, según si va a pedir más pasos antes de bajar el .xlsx).
 function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, log = () => {} }) {
   const layout = derivarLayoutSaldos(wb);
-  const planDeCuentas = leerPlanDeCuentas(wb, layout);
-  const { matcheadas, sinMapear } = emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo);
+  const { cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout);
+  const { matcheadas, sinMapear, escritas } = emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo);
 
   escribirStaging(wb, layout, matcheadas, log);
+
+  if (duplicadas.length) {
+    log(`  ⚠ ${duplicadas.length} código(s) repetidos en el plan de cuentas de SALDOS: ` +
+        duplicadas.map(d => `${d.codigo} (filas ${d.filaPrevia} y ${d.fila})`).join(", ") +
+        `. Solo una de cada par levanta el importe; la otra queda en cero. Hay que decidir ` +
+        `cuál sobra — el motor no las toca.`);
+  }
 
   if (sinMapear.length) {
     log(`  ⚠ ${sinMapear.length} cuenta(s) del export NO están en el plan de cuentas de este ` +
@@ -78,10 +87,13 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, log = () => {} }) 
 
   return {
     layout,
+    planDeCuentas,
+    escritas,
     resumen: {
       cuentasExport: cuentasExport.length,
       cuentasEscritas: matcheadas.length,
       sinMapear: sinMapear.map(c => ({ codigo: c.codigo, nombre: c.nombre, saldo: c[campoSaldo] })),
+      duplicadas,
       totalEscrito,
       totalExport,
     },

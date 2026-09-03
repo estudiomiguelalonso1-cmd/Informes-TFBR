@@ -133,17 +133,46 @@ function derivarLayoutSaldos(wb) {
 // El texto (no solo el codigo) es lo que hay que volver a escribir en el staging para
 // garantizar que el VLOOKUP matchee (ver la nota de diseño en docs/formula_analysis.md
 // sobre por que NO alcanza con pegar el texto tal cual lo exporta Onvio).
+// Devuelve { cuentas, duplicadas }.
+//
+// Un código puede aparecer en más de una fila, y no es teórico: en el Acumulado R$ la cuenta
+// 4230400000 "Intereses resarcitorios" está en la fila 199 escrita con dos espacios después
+// del código y en la 208 con uno solo. El BUSCARV busca el TEXTO, así que la 199 levanta su
+// saldo y la 208 queda en cero para siempre, sin que nada avise.
+//
+// Se usa la PRIMERA fila para escribir (una sola de las dos puede levantar el importe) y se
+// devuelven las repetidas para avisarlas: cuál de las dos sobra es una decisión contable.
 function leerPlanDeCuentas(wb, layout) {
   const ws = wb.getWorksheet(layout.sheet);
   const cuentas = {};
+  const duplicadas = [];
   for (let r = layout.planDeCuentas.desde; r <= layout.planDeCuentas.hasta; r++) {
     const texto = ctTextoDe(ws, r, layout.keyCol).trim();
     if (!texto) continue;
     const m = CT_RE_CUENTA.exec(texto);
     if (!m) continue;
-    cuentas[m[1]] = { fila: r, texto };
+    const codigo = m[1];
+    // La columna del BUSCARV se guarda POR FILA y no se da por sentada: no todas las
+    // secciones usan la misma (en RESULTADOS puede correrse), y los controles necesitan
+    // leer el saldo en la columna que esa fila usa de verdad.
+    const ficha = { fila: r, texto, colSaldo: ctColSaldoDeFila(ws, r, layout) };
+    if (cuentas[codigo]) {
+      duplicadas.push({ codigo, fila: r, texto, filaPrevia: cuentas[codigo].fila, textoPrevio: cuentas[codigo].texto });
+      cuentas[codigo].otrasFilas = (cuentas[codigo].otrasFilas || []).concat([ficha]);
+    } else {
+      cuentas[codigo] = ficha;
+    }
   }
-  return cuentas;
+  return { cuentas, duplicadas };
+}
+
+// La columna donde esta fila tiene su BUSCARV. Si no encuentra ninguna, cae en la del layout.
+function ctColSaldoDeFila(ws, fila, layout) {
+  for (let c = 1; c <= Math.min(ws.columnCount, 15); c++) {
+    const f = ctFormulaDe(ws, fila, c);
+    if (f && CT_RE_VLOOKUP.test(f)) return c;
+  }
+  return layout.saldoCol;
 }
 
 if (typeof module !== "undefined") {

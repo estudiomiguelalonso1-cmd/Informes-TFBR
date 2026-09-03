@@ -1,0 +1,24 @@
+{
+  "name": "tfbr-close-automation",
+  "version": "1.0.0",
+  "description": "Automatiza la parte mecánica del cierre mensual de TRANSPORTES FURLONG DO BRASIL S.A.: toma el Sumas y Saldos exportado de Onvio y lo vuelca en los 4 balances (Mensual $, Mensual R$, Acumulado $, Acumulado R$).",
+  "main": "buscador.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com-tfbr:estudiomiguelalonso1-cmd/Informes-TFBR.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "xlsx": "^0.18.5"
+  }
+}
