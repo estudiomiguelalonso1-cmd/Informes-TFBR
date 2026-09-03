@@ -1,6 +1,7 @@
+informe-tfbr/test-assets/
 output/
 *.tmp
 *.lock
 __pycache__/
 *.pyc
-test-assets/
+node_modules/
