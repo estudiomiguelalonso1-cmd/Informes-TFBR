@@ -65,11 +65,13 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, log = () => {} }) 
 
   escribirStaging(wb, layout, matcheadas, log);
 
-  if (duplicadas.length) {
-    log(`  ⚠ ${duplicadas.length} código(s) repetidos en el plan de cuentas de SALDOS: ` +
-        duplicadas.map(d => `${d.codigo} (filas ${d.filaPrevia} y ${d.fila})`).join(", ") +
-        `. Solo una de cada par levanta el importe; la otra queda en cero. Hay que decidir ` +
-        `cuál sobra — el motor no las toca.`);
+  // Los códigos repetidos se clasifican en vez de avisarlos en bloque: no son todos el mismo
+  // problema (ver duplicados_tfbr.js) y mezclarlos hace que el aviso no sirva para actuar.
+  const casosDuplicados = duplicadas.length
+    ? clasificarDuplicados(wb, layout, duplicadas)
+    : [];
+  for (const c of casosDuplicados) {
+    log(`  ⚠ Código repetido ${c.codigo} (filas ${c.filas.map(f => f.fila).join(" y ")}): ${c.motivo}`);
   }
 
   if (sinMapear.length) {
@@ -93,7 +95,7 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, log = () => {} }) 
       cuentasExport: cuentasExport.length,
       cuentasEscritas: matcheadas.length,
       sinMapear: sinMapear.map(c => ({ codigo: c.codigo, nombre: c.nombre, saldo: c[campoSaldo] })),
-      duplicadas,
+      duplicadas: casosDuplicados,
       totalEscrito,
       totalExport,
     },
@@ -105,5 +107,6 @@ if (typeof module !== "undefined") {
   global.derivarLayoutSaldos = cfg.derivarLayoutSaldos;
   global.leerPlanDeCuentas = cfg.leerPlanDeCuentas;
   global.ctColNumeroALetra = cfg.ctColNumeroALetra;
+  global.clasificarDuplicados = require("./duplicados_tfbr.js").clasificarDuplicados;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }

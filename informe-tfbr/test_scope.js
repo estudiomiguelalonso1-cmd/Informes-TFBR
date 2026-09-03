@@ -13,8 +13,8 @@ const path = require("path");
 // El mismo orden en el que index.html los carga.
 const ARCHIVOS = [
   "formula_utils.js", "formula_hojas.js", "parser_tfbr.js", "config_tfbr.js",
-  "motor_tfbr.js", "periodo_tfbr.js", "validar_tfbr.js", "fixes_tfbr.js",
-  "github_tfbr.js", "app.js",
+  "duplicados_tfbr.js", "motor_tfbr.js", "periodo_tfbr.js", "validar_tfbr.js",
+  "fixes_tfbr.js", "github_tfbr.js", "app.js",
 ];
 
 // Solo las declaraciones de nivel superior: las que arrancan al principio de la línea.

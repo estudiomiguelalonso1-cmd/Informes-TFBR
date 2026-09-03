@@ -269,11 +269,14 @@ function pintarResultado() {
       extra += `<br><span class="footer-note">Sin mapear (no entran en ningún total): ` +
         s.sinMapear.map(c => `${c.codigo} ${c.nombre}`).join(", ") + `</span>`;
     }
-    if (s.duplicadas && s.duplicadas.length) {
-      extra += `<br><span class="footer-note">⚠ Códigos repetidos en el plan de cuentas — ` +
-        `solo una de cada par levanta el importe, la otra queda en cero: ` +
-        s.duplicadas.map(d => `${d.codigo} (filas ${d.filaPrevia} y ${d.fila})`).join(", ") +
-        `</span>`;
+    for (const d of (s.duplicadas || [])) {
+      const etiqueta = {
+        nombre_distinto: "dos cuentas distintas con el mismo código",
+        texto_identico: "doble conteo",
+        texto_distinto: "una de las dos nunca levanta su importe",
+      }[d.tipo] || d.tipo;
+      extra += `<br><span class="footer-note">⚠ <b>${d.codigo}</b> (filas ` +
+        `${d.filas.map(f => f.fila).join(" y ")}) — ${etiqueta}: ${d.motivo}</span>`;
     }
     for (const h of (r.periodoDatos ? r.periodoDatos.hecho : [])) {
       extra += `<br><span class="footer-note">✓ ${h}</span>`;
