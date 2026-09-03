@@ -1,0 +1,31 @@
+# Layout confirmado en docs/formula_analysis.md (BM)
+id: balance_mensual_ars
+label: "Balance Mensual $"
+template: templates/balance_mensual_ars.xls
+output_name_pattern: "Balance Mensual TFBR {month_name} {year}.xls"
+
+source_period: mensual        # usa inputs/<period>/sumas_y_saldos_mensual.xls
+source_currency: ARS          # columna "Saldo ($)" del Sumas y Saldos
+
+saldos:
+  sheet: SALDOS
+  # el VLOOKUP de cada fila del template busca su propia columna A
+  # (texto completo "<codigo>  <descripcion>") dentro del staging_range.
+  key_col: A
+  deudor_col: B
+  acreedor_col: C
+  saldo_col: D
+  template_key_rows: "A7:A241"     # filas del plan de cuentas fijo, para el matching por codigo
+  staging_range: "A243:B360"
+  staging_key_col: A
+  staging_value_col: B
+
+# celdas de fecha (se completan igual, ver nota de confianza media en el plan)
+manual_inputs:
+  period_end_date: "EESP!F9"
+  prior_year_date: "EESP!G9"
+
+tc_cierre_targets: []   # BM no necesita el TC CIERRE directamente (se escribe en el Sumas y Saldos, no aca)
+
+fixes: ["anexo_ii_freeze_bm"]
+validations: ["balance_mensual_ars"]

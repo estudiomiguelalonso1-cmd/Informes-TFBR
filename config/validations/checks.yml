@@ -1,0 +1,38 @@
+# Celdas de control por archivo. "expect: 0" = debe dar (aprox) cero para pasar.
+# Direcciones confirmadas en docs/formula_analysis.md; las marcadas TODO necesitan
+# confirmarse contra el archivo real en Fase 0/1 antes de confiar en el check.
+
+balance_mensual_ars:
+  - cell: "SALDOS!D237"
+    expect: 0
+    description: "Debe = Haber (SALDOS!D237 = +B236-C236)"
+  - cell: "EESP!F32"
+    expect: 0
+    description: "Total Activo = Total Pasivo y Patrimonio Neto (chequeo dentro de EESP)"
+
+balance_mensual_brl:
+  - cell: "SALDOS!F227"
+    expect: 0
+    description: "Debe = Haber (BMR, SALDOS!F227 = +C227-D227)"
+  # TODO Fase 2: ubicar el check equivalente de Activo=Pasivo+PN en el EESP de BMR
+
+balance_acumulado_ars:
+  - cell: "TODO"
+    expect: 0
+    description: "TODO Fase 3: ubicar check Debe=Haber y Activo=Pasivo+PN en BA"
+
+balance_acumulado_brl:
+  - cell: "SALDOS!E222"
+    expect: 0
+    description: "Tie-out de diferencia de cambio (E222 = +E209-D222-D209), confirmado en defect_diagnosis.md"
+  - cell: "TODO"
+    expect: 0
+    description: "TODO Fase 4: ubicar check Debe=Haber y Activo=Pasivo+PN en BAR"
+
+# errores ya conocidos hoy en los archivos - no fallan el run (son preexistentes),
+# pero cualquier error NUEVO que no este en esta lista SI hace fallar la validacion.
+known_baseline_errors:
+  balance_mensual_ars: ["Pasivo!K30", "Anexo II!G113"]
+  balance_mensual_brl: ["Pasivo!K35", "Anexo II!G108", "Anexo I!D17"]
+  balance_acumulado_ars: ["Anexo II!G85"]
+  balance_acumulado_brl: ["Pasivo!K17", "Anexo II!G84", "EEPN!K17"]

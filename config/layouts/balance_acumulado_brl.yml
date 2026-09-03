@@ -1,0 +1,58 @@
+# Layout confirmado en docs/defect_diagnosis.md (BAR)
+id: balance_acumulado_brl
+label: "Balance Acumulado R$"
+template: templates/balance_acumulado_brl.xls
+output_name_pattern: "Balance acumulado TFBR {month_name} {year}-Reales.xls"
+
+source_period: acumulado
+source_currency: BRL
+
+saldos:
+  sheet: SALDOS
+  key_col: C
+  deudor_col: D
+  acreedor_col: E
+  saldo_col: F
+  template_key_rows: "C7:C227"     # confirmar rango exacto en Fase 0
+  staging_range: "C228:D315"
+  staging_key_col: C
+  staging_value_col: D
+
+manual_inputs:
+  period_end_date: "EESP!F13"   # mismo desplazamiento que BA (UsedRange.Row=5), confirmar
+  prior_year_date: "EESP!G13"
+
+# BAR es el UNICO archivo con el TC CIERRE tipeado de nuevo, ademas del Sumas y Saldos.
+# Tambien tiene el cuadro mensual de diferencia de cambio, que necesita el input separado
+# `dif_cambio_mes` (no se puede derivar del tipo de cambio solo).
+tc_cierre_targets:
+  - cell: "SALDOS!G1"
+dif_cambio_schedule:
+  sheet: SALDOS
+  # Confirmado por defect_diagnosis.md SOLO para Ene-Jul 2026. D221 no es un mes: es una linea
+  # aparte "ACUMULADO 01/01/2026-30/06/2026" (ajuste semestral, no seguir el patron mes->fila+1
+  # a ciegas). D222 = SUM(D214:D221), es la formula de total, nunca se escribe a mano.
+  cells_by_month:
+    1: "D214"
+    2: "D215"
+    3: "D216"
+    4: "D217"
+    5: "D218"
+    6: "D219"
+    7: "D220"
+    8: null
+    9: null
+    10: null
+    11: null
+    12: null
+  total_cell: "D222"   # formula SUM, no tocar
+  accumulated_h1_cell: "D221"  # linea especial, no es un mes - no escribir sin confirmar su proposito
+  note: >
+    El mapeo mes->celda de agosto en adelante NO esta confirmado (el doc solo vio hasta julio).
+    No asumir que "mes 8 = fila siguiente a D220" - la fila D221 ya esta ocupada por un ajuste
+    semestral distinto, asi que el patron podria no ser simplemente secuencial. Re-verificar
+    contra el archivo real antes de habilitar BAR mas alla de julio 2026 (Fase 4), y fallar
+    explicito (no escribir nada) si el mes pedido no esta en este mapeo.
+
+fixes: []
+validations: ["balance_acumulado_brl"]

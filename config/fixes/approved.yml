@@ -1,0 +1,18 @@
+# Fixes aprobados por el usuario para aplicarse automaticamente en cada corrida.
+# Ver docs/defect_diagnosis.md seccion 2, item 2, para el detalle completo.
+
+anexo_ii_freeze_bm:
+  file: balance_mensual_ars
+  description: >
+    Anexo II!D122/D126/D129/D130/D132 tenian un vinculo externo muerto a un archivo de mayo 2012
+    ("RESUMEN PAGOS MAYO 2012.xlsx", ruta UNC que ya no existe). Se confirmo que ningun calculo
+    posterior depende de este bloque (D121:D134 es un callejon sin salida). Se congela como
+    valores fijos iguales a los ultimos numeros en cache, rompiendo el vinculo muerto sin cambiar
+    lo que se ve hoy en el reporte.
+  action: freeze_static
+  cells:
+    "Anexo II!D122": 3310746.86
+    "Anexo II!D126": 2583219.17
+    "Anexo II!D129": 78529.45
+    "Anexo II!D130": 89824.30
+    "Anexo II!D132": 36354509.30

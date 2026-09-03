@@ -1,0 +1,59 @@
+# Fixes propuestos pero NO aprobados todavia (pendientes de confirmar con contaduria).
+# enabled: false en todos - el pipeline los ignora hasta que alguien los active a mano.
+# Cuando se confirme cada uno, alcanza con poner enabled: true (misma forma que approved.yml,
+# las 2 primitivas freeze_static / replace_formula ya cubren todos los casos de aca).
+
+esp_f13_dead_link_bm:
+  enabled: false
+  file: balance_mensual_ars
+  action: replace_formula
+  cell: "EESP!F13"
+  new_value: 0
+  note: >
+    Vinculo externo muerto a un balance 2004 de otra empresa del grupo ("Furlong Equipos y
+    Vehiculos S.A."). Valor en cache hoy = 0, asi que este fix no cambiaria ningun numero visible.
+    Ningun archivo hermano tiene una linea equivalente. Ver defect_diagnosis.md item 1.
+    Falta confirmar con el preparador si esta fila alguna vez represento algo real de TFBR.
+
+pasivo_k_ref_family:
+  enabled: false
+  note: >
+    Columna de comparacion contra ejercicios 2002-2004, muerta (#REF!), compartida entre
+    Pasivo!K30 (BM), Pasivo!K35 (BMR), Pasivo!K17 (BAR), Anexo II!G113 (BM), Anexo II!G108 (BMR),
+    Anexo II!G85 (BA), Anexo II!G84 (BAR), y EEPN!K17 (BAR) - todas con el mismo numero fantasma
+    en cache (-2.146.826.265). No hay datos vivos debajo para reconstruir un SUM real: la unica
+    reconstruccion posible da 0. Falta una decision de politica (jubilar la columna vs. intentar
+    reconstruirla igual) antes de activar. Ver defect_diagnosis.md items 3 y 5.
+  entries:
+    - file: balance_mensual_ars
+      action: replace_formula
+      cell: "Pasivo!K30"
+      new_value: 0
+    - file: balance_mensual_brl
+      action: replace_formula
+      cell: "Pasivo!K35"
+      new_value: 0
+    - file: balance_acumulado_brl
+      action: replace_formula
+      cell: "Pasivo!K17"
+      new_value: 0
+    - file: balance_mensual_ars
+      action: replace_formula
+      cell: "Anexo II!G113"
+      new_value: 0
+    - file: balance_mensual_brl
+      action: replace_formula
+      cell: "Anexo II!G108"
+      new_value: 0
+    - file: balance_acumulado_ars
+      action: replace_formula
+      cell: "Anexo II!G85"
+      new_value: 0
+    - file: balance_acumulado_brl
+      action: replace_formula
+      cell: "Anexo II!G84"
+      new_value: 0
+    - file: balance_acumulado_brl
+      action: replace_formula
+      cell: "EEPN!K17"
+      new_value: 0

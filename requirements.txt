@@ -1,0 +1,6 @@
+# Dependencias del orquestador (src/*.py). El modulo `uno` NO esta aca a proposito:
+# lo provee la propia instalacion de LibreOffice (python3-uno en Linux), no es un paquete de pip.
+# Ver .github/workflows/monthly_close.yml sobre como se resuelve el PYTHONPATH para encontrarlo.
+pandas>=2.0
+xlrd>=2.0
+PyYAML>=6.0

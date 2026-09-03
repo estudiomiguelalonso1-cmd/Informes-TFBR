@@ -1,0 +1,28 @@
+# Layout confirmado en docs/formula_analysis.md (BMR)
+id: balance_mensual_brl
+label: "Balance Mensual R$"
+template: templates/balance_mensual_brl.xls
+output_name_pattern: "Balance Mensual TFBR {month_name} {year} -Reales.xls"
+
+source_period: mensual
+source_currency: BRL          # columna "Saldo (R$)" del Sumas y Saldos
+
+saldos:
+  sheet: SALDOS
+  key_col: B
+  deudor_col: C
+  acreedor_col: D
+  saldo_col: E
+  template_key_rows: "B7:B231"     # confirmar rango exacto en Fase 0 (offset vs BM)
+  staging_range: "B232:C289"
+  staging_key_col: B
+  staging_value_col: C
+
+manual_inputs:
+  period_end_date: "EESP!F9"    # BMR: fila 13 esta vacia (sin formula), revisar si usa otra celda
+  prior_year_date: "EESP!G9"
+
+tc_cierre_targets: []   # el TC CIERRE tampoco se tipea directo en BMR; nace en Sumas y Saldos!Hoja1
+
+fixes: []
+validations: ["balance_mensual_brl"]

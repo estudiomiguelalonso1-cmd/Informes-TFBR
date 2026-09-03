@@ -1,0 +1,29 @@
+# Layout confirmado en docs/defect_diagnosis.md (BA)
+id: balance_acumulado_ars
+label: "Balance Acumulado $"
+template: templates/balance_acumulado_ars.xls
+output_name_pattern: "Balance acumulado TFBR {month_name} {year}.xls"
+
+source_period: acumulado
+source_currency: ARS
+
+saldos:
+  sheet: SALDOS
+  key_col: B
+  deudor_col: C
+  acreedor_col: D
+  saldo_col: E
+  template_key_rows: "B7:B234"     # confirmar rango exacto en Fase 0
+  staging_range: "A235:B357"       # staging en columna A pese a que el resto usa B/C/D/E (layout hibrido confirmado)
+  staging_key_col: A
+  staging_value_col: B
+
+manual_inputs:
+  # OJO: NO es EESP!F9/G9 (esas estan vacias en BA) - corregido en defect_diagnosis.md
+  period_end_date: "EESP!F13"
+  prior_year_date: "EESP!G13"
+
+tc_cierre_targets: []
+
+fixes: []
+validations: ["balance_acumulado_ars"]
