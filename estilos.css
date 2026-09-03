@@ -1,0 +1,380 @@
+/* Estilos compartidos por la pantalla de inicio y los cuatro informes.
+
+   Septiembre 2026: se cambió la paleta. Antes era crema + terracota con serif de display;
+   ahora es un gris de papel con acento verdigrís —el verde del cobre oxidado— y una serif
+   sobria sólo en los títulos. La idea es que la pantalla se lea como un estado contable y no
+   como una landing: menos sombra, menos movimiento, más aire entre las cosas.
+
+   IMPORTANTE: los nombres de las variables NO cambiaron. Los <style> propios de cada informe
+   usan --clay, --cream-alto, --line-fuerte, etc.; si se renombran, esos bloques se quedan sin
+   color y no lo avisa nadie. Los nombres viejos quedan abajo como alias de los nuevos. */
+
+:root{
+  /* --- la paleta, por lo que significa --- */
+  --fondo:#F5F7F6;          /* papel: un blanco roto con sesgo verde, no un gris neutro */
+  --fondo-alto:#EDF1EF;     /* zonas hundidas: dropzones, encabezados de tabla */
+  --superficie:#FFFFFF;
+  --tinta:#16211F;
+  --tinta-media:#3C4A47;
+  --tinta-suave:#5C6B68;
+  --tenue:#8A9895;
+  --borde:#DDE3E1;
+  --borde-fuerte:#C6D0CD;
+  --acento:#0F6B5C;         /* verdigrís */
+  --acento-hondo:#0B4F44;
+  --acento-suave:#E3F0EC;
+
+  /* semáforo: separado del acento a propósito, para que "verde" signifique una sola cosa */
+  --bien:#1F7A43;
+  --bien-fondo:#E6F2EA;
+  --bien-borde:#C4DECF;
+  --mal:#A8321F;
+  --mal-fondo:#FBEAE6;
+  --mal-borde:#EFCCC4;
+
+  /* --- nombres anteriores, mantenidos como alias --- */
+  --cream:var(--fondo);
+  --cream-alto:var(--fondo-alto);
+  --card:var(--superficie);
+  --ink:var(--tinta);
+  --ink-medio:var(--tinta-media);
+  --ink-soft:var(--tinta-suave);
+  --clay:var(--acento);
+  --clay-deep:var(--acento-hondo);
+  --clay-suave:var(--acento-suave);
+  --line:var(--borde);
+  --line-fuerte:var(--borde-fuerte);
+  --ok:var(--bien);
+  --ok-bg:var(--bien-fondo);
+  --ok-borde:var(--bien-borde);
+  --warn:var(--mal);
+  --warn-bg:var(--mal-fondo);
+  --warn-borde:var(--mal-borde);
+
+  --sombra-baja:0 1px 2px rgba(22,33,31,.05);
+  --sombra-media:0 1px 2px rgba(22,33,31,.06), 0 8px 24px -12px rgba(22,33,31,.18);
+  --sombra-alta:0 2px 6px rgba(22,33,31,.08), 0 24px 48px -20px rgba(22,33,31,.28);
+  --radio:10px;
+  --radio-chico:7px;
+  --transicion:140ms cubic-bezier(.2,.7,.3,1);
+}
+
+*{box-sizing:border-box;}
+
+body{
+  margin:0;
+  color:var(--tinta);
+  font-family:'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size:15px;
+  line-height:1.55;
+  padding:40px 24px 96px;
+  -webkit-font-smoothing:antialiased;
+  background:var(--fondo);
+}
+
+.wrap{max-width:900px; margin:0 auto;}
+
+/* El título y su bajada van a la izquierda y los botones de configuración a la derecha. Con
+   tres botones (Informe C) la columna del título quedaba tan angosta que el título partía en
+   tres renglones: por eso la izquierda pide un ancho mínimo y los botones bajan si no entran. */
+.topbar{
+  display:flex; justify-content:space-between; align-items:flex-start;
+  gap:14px 20px; margin-bottom:24px; flex-wrap:wrap;
+}
+.topbar > div:first-child{flex:1 1 420px; min-width:0;}
+.topbar > div:last-child{flex-wrap:wrap;}
+/* Cuando los botones bajan, el aire de abajo lo pone la topbar y no la bajada. */
+.topbar .sub{margin-bottom:0;}
+
+h1{
+  font-family:'Newsreader', Georgia, serif; font-weight:500;
+  font-size:clamp(28px, 4vw, 36px); line-height:1.15;
+  margin:0 0 6px; letter-spacing:-.015em; text-wrap:balance;
+}
+.sub{color:var(--tinta-suave); margin:0 0 34px; font-size:15px; max-width:62ch;}
+
+/* Etiqueta chiquita sobre el título, para dar contexto sin ruido. */
+.eyebrow{
+  display:inline-block; margin:0 0 10px;
+  font-size:11px; font-weight:700; letter-spacing:.11em; text-transform:uppercase;
+  color:var(--tenue);
+}
+
+.card{
+  background:var(--superficie); border:1px solid var(--borde); border-radius:var(--radio);
+  padding:26px 28px; margin-bottom:14px; box-shadow:var(--sombra-baja);
+}
+.card h2{
+  font-family:'Newsreader', Georgia, serif; font-weight:500;
+  font-size:23px; margin:0 0 16px; letter-spacing:-.015em; line-height:1.25;
+}
+
+button{
+  font-family:inherit; font-weight:600; font-size:14.5px;
+  background:var(--acento); color:#fff; border:1px solid transparent;
+  border-radius:8px;
+  padding:11px 22px; cursor:pointer; transition:var(--transicion);
+}
+button:hover{background:var(--acento-hondo);}
+button:active{background:var(--acento-hondo);}
+button.secondary, button.secundario{
+  background:transparent; color:var(--tinta-suave); border-color:var(--borde-fuerte);
+}
+button.secondary:hover, button.secundario:hover{
+  background:var(--superficie); border-color:var(--tinta-suave); color:var(--tinta);
+}
+button:disabled, button:disabled:hover{
+  background:var(--borde-fuerte); color:var(--tenue); cursor:not-allowed; border-color:transparent;
+}
+button.secundario:disabled, button.secondary:disabled{
+  background:transparent; color:var(--tenue); border-color:var(--borde);
+}
+
+:where(button, a, input, select, summary, .dropzone):focus-visible{
+  outline:2px solid var(--acento); outline-offset:2px;
+}
+
+.gear-btn{
+  background:var(--superficie); border:1px solid var(--borde); border-radius:var(--radio-chico);
+  padding:8px 14px; font-size:13px; color:var(--tinta-suave); cursor:pointer;
+  font-family:inherit; white-space:nowrap; transition:var(--transicion);
+}
+.gear-btn:hover{border-color:var(--borde-fuerte); color:var(--tinta); background:var(--superficie);}
+
+.dropzone{
+  border:1.5px dashed var(--borde-fuerte); border-radius:var(--radio); padding:28px;
+  text-align:center; color:var(--tinta-suave); cursor:pointer;
+  transition:var(--transicion); display:block; background:var(--fondo-alto);
+}
+.dropzone:hover{border-color:var(--acento); color:var(--acento-hondo); background:var(--acento-suave);}
+input[type=file]{display:none;}
+
+.checks{display:grid; gap:8px;}
+.check{
+  display:flex; justify-content:space-between; align-items:center; gap:16px;
+  padding:14px 16px; border-radius:var(--radio-chico); border:1px solid var(--borde);
+  background:var(--fondo-alto);
+}
+.check.ok{background:var(--bien-fondo); border-color:var(--bien-borde);}
+.check.bad{background:var(--mal-fondo); border-color:var(--mal-borde);}
+.check .name{font-weight:600; font-size:14px; line-height:1.4;}
+.check .detail{font-size:12.5px; color:var(--tinta-suave); margin-top:3px; line-height:1.5;}
+.check .value{font-variant-numeric:tabular-nums; font-weight:700; font-size:15px; white-space:nowrap;}
+
+.badge{
+  font-size:11.5px; padding:3px 9px; border-radius:999px; font-weight:700;
+  letter-spacing:.02em; white-space:nowrap;
+}
+.badge.ok{background:var(--bien); color:#fff;}
+.badge.bad{background:var(--mal); color:#fff;}
+
+table{width:100%; border-collapse:collapse; font-size:13.5px;}
+th{
+  text-align:left; color:var(--tinta-suave); font-weight:700; font-size:11px;
+  text-transform:uppercase; letter-spacing:.06em; padding:9px 10px;
+  border-bottom:1px solid var(--borde-fuerte); background:var(--fondo-alto);
+  position:sticky; top:0; z-index:1;
+}
+td{padding:10px; border-bottom:1px solid var(--borde); position:relative;}
+tbody tr{transition:background var(--transicion);}
+tbody tr:hover{background:var(--fondo-alto);}
+tr:last-child td{border-bottom:none;}
+.num{text-align:right; font-variant-numeric:tabular-nums;}
+
+select, input[type=text]{
+  font-family:inherit; padding:9px 11px; border-radius:var(--radio-chico);
+  border:1px solid var(--borde-fuerte); font-size:13.5px; width:100%;
+  background:var(--superficie); color:var(--tinta); transition:var(--transicion);
+}
+select:focus, input[type=text]:focus{
+  outline:none; border-color:var(--acento); box-shadow:0 0 0 3px rgba(15,107,92,.14);
+}
+.pending-row{background:#FBFAF4;}
+.pending-row:hover{background:#F7F5EC;}
+
+.footer-note{color:var(--tinta-suave); font-size:13.5px; margin-top:8px; line-height:1.6;}
+.hidden{display:none;}
+.spinner{color:var(--tinta-suave); font-size:14px;}
+.spinner::before{
+  content:""; display:inline-block; width:11px; height:11px; margin-right:7px;
+  border:2px solid var(--borde-fuerte); border-top-color:var(--acento); border-radius:50%;
+  animation:girar .7s linear infinite; vertical-align:-1px;
+}
+@keyframes girar{to{transform:rotate(360deg);}}
+
+/* Los mensajes llevan una barra al costado: se distingue el estado de un vistazo,
+   sin depender sólo del color de fondo. */
+.status-msg{
+  font-size:13.5px; margin-top:12px; padding:12px 14px; border-radius:var(--radio-chico);
+  background:var(--fondo-alto); color:var(--tinta-media); border-left:3px solid var(--borde-fuerte);
+  line-height:1.55;
+}
+.status-msg.ok{background:var(--bien-fondo); color:var(--bien); border-left-color:var(--bien);}
+.status-msg.bad{background:var(--mal-fondo); color:var(--mal); border-left-color:var(--mal);}
+
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(22,33,31,.48); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; z-index:100; padding:24px;
+  animation:aparecer var(--transicion);
+}
+@keyframes aparecer{from{opacity:0;}to{opacity:1;}}
+.modal-overlay.hidden{display:none;}
+.modal{
+  background:var(--superficie); border-radius:var(--radio); padding:28px; max-width:500px;
+  width:100%; max-height:90vh; overflow-y:auto; box-shadow:var(--sombra-alta);
+}
+.modal h2{font-family:'Newsreader', Georgia, serif; font-weight:500; font-size:22px; margin:0 0 6px;}
+.modal label{font-size:13px; color:var(--tinta-suave); display:block; margin:16px 0 6px; font-weight:600;}
+.modal-actions{display:flex; gap:10px; margin-top:22px;}
+
+a.help-link{color:var(--acento); text-decoration-color:var(--acento-suave); text-underline-offset:2px;}
+a.help-link:hover{text-decoration-color:var(--acento);}
+
+.volver{
+  display:inline-flex; align-items:center; gap:6px; margin-bottom:20px;
+  color:var(--tinta-suave); text-decoration:none; font-size:13.5px; font-weight:600;
+  transition:var(--transicion);
+}
+.volver:hover{color:var(--tinta);}
+
+.log{
+  background:var(--fondo-alto); border:1px solid var(--borde); border-radius:var(--radio-chico);
+  padding:14px 16px;
+  font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px;
+  color:var(--tinta-media); white-space:pre-wrap; max-height:300px; overflow-y:auto; margin:0;
+  line-height:1.65;
+}
+
+/* ---- qué archivo hay que bajar ----
+   Es el dato que más se consulta y el más fácil de equivocar: los dos balances salen de un
+   Sumas y Saldos de Onvio, pero uno lo quiere por centro de costos y mensual y el otro por
+   código de cuenta y acumulado. Va arriba de todo y en una sola línea. */
+.instruccion{
+  display:flex; gap:11px; align-items:flex-start;
+  background:var(--acento-suave); border:1px solid transparent;
+  border-left:3px solid var(--acento); border-radius:var(--radio-chico);
+  padding:11px 14px; margin-bottom:16px;
+  font-size:12.5px; line-height:1.55; color:var(--tinta-media);
+}
+.instruccion b{color:var(--tinta); font-weight:600;}
+.instruccion .que{
+  flex:none; font-weight:700; color:var(--acento-hondo); text-transform:uppercase;
+  font-size:10.5px; letter-spacing:.07em; padding-top:2px;
+}
+
+/* ---- buscador de listas largas (ver buscador.js) ----
+   Un solo control: el botón abre el panel y adentro está la búsqueda. El <select> real
+   queda escondido y es el que guarda el valor. */
+.combo{position:relative; display:block;}
+.combo-real{display:none;}
+
+/* Va con `button.` delante a propósito: el `button{}` general del sitio lo pinta con el color
+   de acción, y sus reglas `button:hover` y `button:disabled` tienen más especificidad que una
+   clase sola, así que le ganaban y el desplegable salía teñido adentro de la tabla. */
+button.combo-boton{
+  width:100%; display:flex; align-items:center; gap:10px; text-align:left;
+  font-family:inherit; font-size:13px; font-weight:400; padding:9px 12px; color:var(--tinta);
+  background:var(--superficie); border:1px solid var(--borde-fuerte);
+  border-radius:var(--radio-chico); cursor:pointer; transition:var(--transicion);
+}
+button.combo-boton:hover{
+  background:var(--superficie); color:var(--tinta); border-color:var(--tinta-suave);
+}
+button.combo-boton[aria-expanded="true"]{
+  border-color:var(--acento); background:var(--superficie); color:var(--tinta);
+  box-shadow:0 0 0 3px rgba(15,107,92,.14);
+}
+button.combo-boton.sin-elegir .combo-valor{color:var(--tenue);}
+.combo-valor{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.combo-flecha{color:var(--tinta-suave); font-size:11px; flex:none;}
+
+.combo-panel{
+  position:absolute; z-index:40; left:0; right:0; top:calc(100% + 4px);
+  background:var(--superficie); border:1px solid var(--borde-fuerte); border-radius:var(--radio-chico);
+  box-shadow:var(--sombra-media); padding:8px;
+}
+.combo-buscar{
+  width:100%; font-family:inherit; font-size:12.5px; padding:7px 10px; color:var(--tinta);
+  background:var(--fondo-alto); border:1px solid var(--borde-fuerte);
+  border-radius:var(--radio-chico);
+}
+.combo-buscar:focus{outline:none; border-color:var(--acento); background:var(--superficie);}
+.combo-buscar::placeholder{color:var(--tenue);}
+
+.combo-lista{max-height:260px; overflow-y:auto; margin-top:6px;}
+.combo-opcion{
+  padding:7px 10px; border-radius:6px; font-size:12.5px; cursor:pointer;
+  color:var(--tinta-media); line-height:1.4;
+}
+.combo-opcion:hover, .combo-opcion.marcada{background:var(--fondo-alto); color:var(--tinta);}
+.combo-opcion.elegida{font-weight:600; color:var(--tinta);}
+.combo-aviso{font-size:11.5px; color:var(--tinta-suave); margin-top:6px; padding:0 4px;}
+.combo-aviso.vacio{color:var(--mal); font-weight:600;}
+
+/* ---- pantalla de inicio ---- */
+.portada{margin-bottom:38px;}
+.portada .linea{
+  width:44px; height:3px; background:var(--acento); border-radius:2px; margin:0 0 20px;
+}
+
+.informes{display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));}
+
+.informe-card{
+  position:relative; display:flex; flex-direction:column; gap:8px;
+  background:var(--superficie); border:1px solid var(--borde); border-radius:var(--radio);
+  padding:24px; text-decoration:none; color:inherit;
+  transition:var(--transicion); box-shadow:var(--sombra-baja); overflow:hidden;
+}
+.informe-card:hover{border-color:var(--acento); box-shadow:var(--sombra-media);}
+
+.informe-card .indice{
+  font-size:11px; font-weight:700; color:var(--tenue);
+  letter-spacing:.11em; text-transform:uppercase;
+}
+.informe-card h2{
+  font-family:'Newsreader', Georgia, serif; font-weight:500;
+  font-size:22px; margin:0; line-height:1.25; letter-spacing:-.015em;
+}
+.informe-card p{margin:0; font-size:13.5px; color:var(--tinta-suave); line-height:1.6;}
+.informe-card .origen{
+  margin-top:auto; padding-top:14px; font-size:11px; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--tenue); font-weight:700;
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.informe-card .flecha{
+  color:var(--acento); font-size:16px; transition:transform var(--transicion);
+}
+.informe-card:hover .flecha{transform:translateX(3px);}
+
+@media (max-width:600px){
+  body{padding:28px 16px 64px;}
+  .card{padding:20px;}
+  .informe-card{padding:20px;}
+  .topbar{flex-direction:column;}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important; transition-duration:.01ms !important;}
+  .informe-card:hover .flecha{transform:none;}
+}
+
+/* ---- la guía por pasos (ver informe-c/pasos.js) ----
+   Dice dónde estoy y cómo vuelvo, sin apilar una lista de pasos: eso confunde más de lo que
+   ubica. Los tramos son la única representación del avance, y son deliberadamente chicos. */
+.pasos-barra{
+  display:flex; align-items:center; gap:14px; margin:0 0 14px;
+}
+.pasos-barra .pasos-sp{flex:1;}
+.pasos-volver{
+  background:none; border:0; color:var(--tinta-suave); font:inherit; font-size:13.5px;
+  font-weight:600; cursor:pointer; padding:5px 9px 5px 5px; border-radius:7px;
+}
+.pasos-volver:hover{color:var(--tinta); background:var(--fondo-alto);}
+.pasos-cuantos{
+  font-size:12px; font-weight:600; color:var(--tenue); letter-spacing:.03em;
+  font-variant-numeric:tabular-nums;
+}
+.pasos-tramos{display:flex; gap:4px; width:132px;}
+.pasos-tramos i{flex:1; height:3px; border-radius:2px; background:var(--borde-fuerte);}
+.pasos-tramos i.hecho{background:var(--bien);}
+.pasos-tramos i.aca{background:var(--acento);}
