@@ -233,9 +233,11 @@ async function procesarPeriodo() {
 
       aplicarFixesAprobados(wb, a.id, log);
 
+      const pendientes = pendientesManuales(wb, a.label);
+
       const outBuffer = await wb.xlsx.writeBuffer();
       App.resultados[a.id] = {
-        resumen, periodoDatos, planDeCuentas, escritas, erroresPrevios,
+        resumen, periodoDatos, planDeCuentas, escritas, erroresPrevios, pendientes,
         workbookBuffer: outBuffer,
       };
     }
@@ -319,7 +321,30 @@ function descargarBorrador(a) {
   URL.revokeObjectURL(url);
 }
 
+// El checklist de lo que hay que completar a mano, con la ubicación de cada cosa. Va en el
+// paso de revisión y no antes: es justo lo que hay que hacer en Excel con el borrador abierto.
+function pintarChecklistManual() {
+  const cont = document.getElementById("cierreChecklist");
+  if (!cont) return;
+  let html = "<p class='footer-note'>Antes de aprobar, con cada borrador abierto en Excel, " +
+             "completá lo que la app no toca:</p>";
+  for (const a of ARCHIVOS_TFBR) {
+    const r = App.resultados[a.id];
+    if (!r || !r.pendientes) continue;
+    html += `<div style="margin-top:12px;"><b>${a.label}</b><ul style="margin:6px 0;">`;
+    for (const p of r.pendientes.puntos) {
+      html += `<li class="footer-note">${p.que} — <i>${p.donde}</i></li>`;
+    }
+    for (const pend of (r.periodoDatos ? r.periodoDatos.pendiente : [])) {
+      html += `<li class="footer-note">${pend}</li>`;
+    }
+    html += "</ul></div>";
+  }
+  cont.innerHTML = html;
+}
+
 function irARevision() {
+  pintarChecklistManual();
   pintarDropzonesCierre();
   mostrar("cardCierre", true);
   document.getElementById("cardCierre").scrollIntoView({ behavior: "smooth" });
