@@ -58,12 +58,53 @@ function escribirStaging(wb, layout, matcheadas, log = () => {}) {
 
 // Corre el proceso completo para UN archivo/moneda. No guarda el archivo (eso lo decide
 // quien llama, según si va a pedir más pasos antes de bajar el .xlsx).
-function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, log = () => {} }) {
-  const layout = derivarLayoutSaldos(wb);
-  const { cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout);
+function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, altaAutomatica = true, log = () => {} }) {
+  let layout = derivarLayoutSaldos(wb);
+  let { cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout);
+
+  // Cuentas que vienen en el export y no estan en el plan. Es un caso normal: entre junio y
+  // julio 2026 aparecieron 6 en el Mensual $, por 11,66 millones de pesos. Si no se dan de
+  // alta, ese importe no entra en ningun total y el balance cierra igual, sin avisar.
+  const altas = [];
+  if (altaAutomatica) {
+    const faltantes = cuentasExport.filter(c => !planDeCuentas[c.codigo]);
+    for (const c of faltantes) {
+      // Si la cuenta ya esta con el codigo mal (un digito menos), las lineas de los estados
+      // apuntan a ESA fila, que nunca levanta importe. Hay que moverlas a la fila nueva o el
+      // importe entra en SALDOS pero no llega al Anexo II ni al EERR.
+      const gemela = buscarGemela(planDeCuentas, c.codigo, c.nombre);
+      const { fila, clave } = insertarCuentaEnSaldos(wb, layout, planDeCuentas, c, log);
+      let repuntadas = [];
+      if (gemela) {
+        const filaGemela = planDeCuentas[gemela.codigo].fila;
+        repuntadas = repuntarGemela(wb, layout.sheet, filaGemela, fila, log);
+      }
+      altas.push({
+        codigo: c.codigo, nombre: c.nombre, fila, clave,
+        gemela: gemela ? gemela.codigo : null, repuntadas,
+        saldo: c[campoSaldo],
+      });
+    }
+    if (faltantes.length) {
+      // Las filas se movieron: el layout y el plan que teniamos quedaron viejos.
+      layout = derivarLayoutSaldos(wb);
+      ({ cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout));
+    }
+  }
+
   const { matcheadas, sinMapear, escritas } = emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo);
 
   escribirStaging(wb, layout, matcheadas, log);
+
+  // Una cuenta de resultado recien dada de alta que no quedo referenciada por ninguna linea
+  // entra en los totales de SALDOS pero no en el Anexo II, y entonces el EERR no la cuenta.
+  // No se inventa a que concepto va: se avisa.
+  const sinEnganchar = altas.filter(a =>
+    String(a.codigo)[0] === "4" && !a.repuntadas.length);
+  for (const a of sinEnganchar) {
+    log(`  ⚠ ${a.clave} se dio de alta en SALDOS pero no quedo enganchada a ninguna linea del ` +
+        `Anexo II: hay que agregarla a mano, o su importe no llega al estado de resultados.`);
+  }
 
   // Los códigos repetidos se clasifican en vez de avisarlos en bloque: no son todos el mismo
   // problema (ver duplicados_tfbr.js) y mezclarlos hace que el aviso no sirva para actuar.
@@ -96,6 +137,8 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, log = () => {} }) 
       cuentasEscritas: matcheadas.length,
       sinMapear: sinMapear.map(c => ({ codigo: c.codigo, nombre: c.nombre, saldo: c[campoSaldo] })),
       duplicadas: casosDuplicados,
+      altas,
+      sinEnganchar: sinEnganchar.map(a => ({ codigo: a.codigo, clave: a.clave })),
       totalEscrito,
       totalExport,
     },
@@ -108,5 +151,9 @@ if (typeof module !== "undefined") {
   global.leerPlanDeCuentas = cfg.leerPlanDeCuentas;
   global.ctColNumeroALetra = cfg.ctColNumeroALetra;
   global.clasificarDuplicados = require("./duplicados_tfbr.js").clasificarDuplicados;
+  const ic = require("./insertar_cuenta.js");
+  global.insertarCuentaEnSaldos = ic.insertarCuentaEnSaldos;
+  global.buscarGemela = ic.buscarGemela;
+  global.repuntarGemela = ic.repuntarGemela;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }

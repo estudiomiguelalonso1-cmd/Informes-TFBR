@@ -271,6 +271,18 @@ function pintarResultado() {
       extra += `<br><span class="footer-note">Sin mapear (no entran en ningún total): ` +
         s.sinMapear.map(c => `${c.codigo} ${c.nombre}`).join(", ") + `</span>`;
     }
+    for (const alta of (s.altas || [])) {
+      extra += `<br><span class="footer-note">➕ Alta: <b>${alta.clave}</b> (fila ${alta.fila})` +
+        (alta.gemela
+          ? ` — ya estaba con el código mal (<code>${alta.gemela}</code>); se movieron ` +
+            `${alta.repuntadas.length} referencia(s) a la fila nueva: ${alta.repuntadas.join(", ")}`
+          : "") + `</span>`;
+    }
+    for (const se of (s.sinEnganchar || [])) {
+      extra += `<br><span class="footer-note">⚠ <b>${se.clave}</b> quedó en SALDOS pero sin ` +
+        `línea en el Anexo II: hay que agregarla a mano o su importe no llega al estado de ` +
+        `resultados.</span>`;
+    }
     for (const d of (s.duplicadas || [])) {
       const etiqueta = {
         nombre_distinto: "dos cuentas distintas con el mismo código",
