@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Balances TFBR — cierre mensual</title>
+<link rel="stylesheet" href="../estilos.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <span class="eyebrow">Transportes Furlong do Brasil S.A.</span>
+      <h1>Cierre mensual — 4 balances</h1>
+      <p class="sub">
+        Sube el export de Onvio, revisá los controles, y aprobá los 4 balances
+        (Mensual $, Mensual R$, Acumulado $, Acumulado R$) juntos, en una sola corrida.
+      </p>
+    </div>
+    <div>
+      <button class="secondary" onclick="abrirConfig()">⚙ Configuración de GitHub</button>
+      <button class="secondary" onclick="mostrarHistorial()">Historial</button>
+    </div>
+  </div>
+
+  <!-- ---------- falta configurar GitHub ---------- -->
+  <div class="card hidden" id="cardSinConfig">
+    <h2>Falta configurar GitHub</h2>
+    <p class="footer-note">
+      Acá es donde se guardan los 4 balances maestros y el historial de cierres, para no
+      tener que subirlos cada vez. Se configura una sola vez.
+    </p>
+    <div style="margin-top:14px;"><button onclick="abrirConfig()">Configurar ahora</button></div>
+  </div>
+
+  <!-- ---------- panel de configuración ---------- -->
+  <div class="card hidden" id="cardConfig">
+    <h2>Configuración de GitHub</h2>
+    <p class="footer-note">
+      El token queda guardado solo en este navegador — no se manda a ningún lado más que
+      a GitHub. <a href="#" onclick="mostrarAyudaToken();return false;">¿Cómo lo genero?</a>
+    </p>
+    <div id="ayudaToken" class="hidden footer-note" style="margin-top:10px;">
+      github.com → tu foto de perfil → <b>Settings</b> → (al fondo del menú)
+      <b>Developer settings</b> → <b>Personal access tokens → Tokens (classic)</b> →
+      <b>Generate new token (classic)</b>. Marcá el casillero <b>repo</b> y generá.
+      Copiá el token (empieza con <code>ghp_</code>): GitHub solo lo muestra una vez.
+    </div>
+    <div style="margin-top:16px; display:grid; gap:12px; max-width:480px;">
+      <label>Token
+        <input type="password" id="cfgToken" placeholder="ghp_...">
+      </label>
+      <label>Usuario/organización y repositorio
+        <input type="text" id="cfgRepo" placeholder="tuusuario/turepo">
+      </label>
+      <label>Rama
+        <input type="text" id="cfgRama" placeholder="main" value="main">
+      </label>
+      <label>Carpeta dentro del repositorio
+        <input type="text" id="cfgCarpeta" placeholder="informe-tfbr" value="informe-tfbr">
+      </label>
+    </div>
+    <div style="margin-top:18px;">
+      <button onclick="guardarConfig()">Guardar</button>
+      <span class="spinner hidden" id="spinnerConfig">Probando conexión…</span>
+    </div>
+    <div id="configStatus"></div>
+  </div>
+
+  <!-- ---------- primera vez: subir los 4 maestros ---------- -->
+  <div class="card hidden" id="cardAlta">
+    <h2>Primera vez: cargar los balances maestros</h2>
+    <p class="footer-note">
+      Para cada archivo, abrilo en Excel real y hacé <b>Archivo → Guardar como → "Libro de
+      Excel (.xlsx)"</b> antes de subirlo acá — el formato viejo .xls no conserva las
+      fórmulas al procesarlo en el navegador, por eso se convierte una sola vez. De acá en
+      adelante queda guardado en GitHub y cada mes solo vas a subir el export de Onvio.
+    </p>
+    <div id="altaDropzones" style="margin-top:18px; display:grid; gap:14px;"></div>
+    <div style="margin-top:18px;">
+      <button id="btnGuardarAlta" disabled onclick="guardarAlta()">Guardar en GitHub</button>
+      <span class="spinner hidden" id="spinnerAlta">Guardando…</span>
+    </div>
+    <div id="altaStatus"></div>
+  </div>
+
+  <!-- ---------- carga del período ---------- -->
+  <div class="card hidden" id="cardExport">
+    <h2>Cargar el período</h2>
+    <div style="display:grid; gap:14px; max-width:480px;">
+      <label>Período (AAAA-MM)
+        <input type="text" id="periodoInput" placeholder="2026-07">
+      </label>
+      <label>Tipo de cambio de cierre (TC CIERRE)
+        <input type="text" id="tcCierreInput" placeholder="293.1757">
+      </label>
+      <label>Diferencia de cambio del mes (solo para Acumulado R$ — dejar vacío si no aplica)
+        <input type="text" id="difCambioInput" placeholder="opcional">
+      </label>
+    </div>
+    <div style="margin-top:16px; display:grid; gap:14px; max-width:520px;">
+      <label class="dropzone" id="dzMensual">
+        <input type="file" id="fileMensual" accept=".xls,.xlsx">
+        <div id="txtMensual">Sumas y Saldos MENSUAL (.xls de Onvio)</div>
+      </label>
+      <label class="dropzone" id="dzAcumulado">
+        <input type="file" id="fileAcumulado" accept=".xls,.xlsx">
+        <div id="txtAcumulado">Sumas y Saldos ACUMULADO (.xls de Onvio)</div>
+      </label>
+    </div>
+    <div style="margin-top:18px;">
+      <button id="btnProcesar" disabled onclick="procesarPeriodo()">Procesar</button>
+      <span class="spinner hidden" id="spinnerProcesar">Procesando…</span>
+    </div>
+    <div id="exportStatus"></div>
+  </div>
+
+  <!-- ---------- resultado / controles ---------- -->
+  <div class="card hidden" id="cardResultado">
+    <h2>Controles</h2>
+    <div id="resultadoResumen"></div>
+    <div id="resultadoDescargas" style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;"></div>
+    <div style="margin-top:18px;">
+      <button onclick="irARevision()">Ya revisé los 4 en Excel, continuar</button>
+    </div>
+  </div>
+
+  <!-- ---------- revisión y aprobación agrupada ---------- -->
+  <div class="card hidden" id="cardCierre">
+    <h2>Revisión y aprobación</h2>
+    <p class="footer-note">
+      Subí los 4 archivos ya revisados y guardados en Excel real. Se aprueban juntos: si
+      falta alguno, no se cierra el mes.
+    </p>
+    <div id="cierreDropzones" style="margin-top:16px; display:grid; gap:14px;"></div>
+    <div style="margin-top:18px;">
+      <button id="btnCerrarMes" disabled onclick="cerrarMes()">Guardar y cerrar el mes</button>
+      <span class="spinner hidden" id="spinnerCierre">Guardando en GitHub…</span>
+    </div>
+    <div id="cierreStatus"></div>
+  </div>
+
+  <!-- ---------- historial ---------- -->
+  <div class="card hidden" id="cardHistorial">
+    <h2>Historial de cierres</h2>
+    <div id="historialLista"></div>
+  </div>
+
+  <div class="card hidden" id="cardLog">
+    <h2>Registro</h2>
+    <div class="log" id="logTexto"></div>
+  </div>
+
+</div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/exceljs.min.js"></script>
+<script src="formula_utils.js"></script>
+<script src="formula_hojas.js"></script>
+<script src="parser_tfbr.js"></script>
+<script src="config_tfbr.js"></script>
+<script src="motor_tfbr.js"></script>
+<script src="fixes_tfbr.js"></script>
+<script src="github_tfbr.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

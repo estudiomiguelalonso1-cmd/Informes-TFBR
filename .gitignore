@@ -3,3 +3,4 @@ output/
 *.lock
 __pycache__/
 *.pyc
+test-assets/

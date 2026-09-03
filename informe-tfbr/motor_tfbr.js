@@ -5,7 +5,10 @@
 // y el plan de arquitectura: TFBR sigue el patrón de round-trip por Excel real, no el de
 // calcular en JS).
 
-const { derivarLayoutSaldos, leerPlanDeCuentas, ctColNumeroALetra } = require("./config_tfbr.js");
+// derivarLayoutSaldos / leerPlanDeCuentas / ctColNumeroALetra vienen de config_tfbr.js,
+// cargado antes que este archivo (ver index.html) — se usan acá como globales, igual que
+// motor_balances.js usa insertRowEn de formula_hojas.js. El require() de más abajo es solo
+// para que los tests de Node (que no cargan <script> en orden) tengan lo mismo disponible.
 
 // Empareja las cuentas del export contra el plan de cuentas del maestro POR CÓDIGO, nunca
 // por el texto tal cual lo trae Onvio ("1120100100 - FORD", con guión) porque el VLOOKUP
@@ -86,5 +89,9 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, log = () => {} }) 
 }
 
 if (typeof module !== "undefined") {
+  const cfg = require("./config_tfbr.js");
+  global.derivarLayoutSaldos = cfg.derivarLayoutSaldos;
+  global.leerPlanDeCuentas = cfg.leerPlanDeCuentas;
+  global.ctColNumeroALetra = cfg.ctColNumeroALetra;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }
