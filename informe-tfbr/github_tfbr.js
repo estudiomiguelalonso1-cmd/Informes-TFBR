@@ -68,6 +68,16 @@ async function ghtLeer(nombre) {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`No pude leer ${ruta} de GitHub (${res.status}): ${await res.text()}`);
   const data = await res.json();
+  // Arriba de 1 MB la Contents API no devuelve el contenido: manda `content: ""` con
+  // `encoding: "none"` y hay que ir por la API de blobs. Hoy los maestros pesan unos 38 KB,
+  // pero si algún día crecen esto fallaría con un error de ExcelJS incomprensible ("no puedo
+  // abrir el archivo") en vez de decir qué pasó.
+  if (data.encoding && data.encoding !== "base64") {
+    throw new Error(
+      `${ruta} pesa ${Math.round((data.size || 0) / 1024)} KB y GitHub no devuelve el ` +
+      `contenido de archivos de más de 1 MB por esta vía. Hay que leerlo con la API de blobs.`
+    );
+  }
   return { contenidoBase64: data.content, sha: data.sha };
 }
 
