@@ -56,9 +56,7 @@ Están en la tabla `UNIFICACIONES` de `limpieza_plan.js`, cada una con el motivo
 
 ## Lo que sigue sin resolverse
 
-Una fila por archivo, y ninguna es un duplicado:
-
-Solo una, en los dos Acumulados: una fila con el "código" `412` y el texto `OTROS INGRESOS`.
+Solo una, en los dos Acumulados, y no es un duplicado: una fila con el "código" `412` y el texto `OTROS INGRESOS`.
 No es una cuenta — el plan la tiene como `4120000000 OTROS INGRESOS`, `imputable = NO`, o sea
 un título de agrupación. Quedó copiada dentro de la lista de cuentas, entre `RECUPERO DE
 GASTOS` y `VENTA RODADO`. No la lee ninguna hoja y está en cero, así que no afecta ningún
