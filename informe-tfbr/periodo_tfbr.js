@@ -9,6 +9,15 @@
 const MESES_ES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
                   "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
 
+// "D" a partir del número de columna, para poder nombrar celdas concretas en los avisos.
+// Local a este archivo (config_tfbr.js tiene ctColNumeroALetra, pero periodo_tfbr.js no
+// depende de él en Node y no vale la pena acoplarlos por un aviso).
+function pfColLetra(n) {
+  let s = "";
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = (n - r - 1) / 26; }
+  return s;
+}
+
 function pfTexto(ws, fila, col) {
   const v = ws.getCell(fila, col).value;
   if (v === null || v === undefined) return "";
@@ -59,18 +68,77 @@ function ubicarCuadroDifCambio(ws) {
     // leyendo la zona de pegado como si fueran meses.
     const v = ws.getCell(r, colValor).value;
     if (v && typeof v === "object" && typeof v.formula === "string") {
-      return { filaTitulo, colEtiqueta: colTitulo, colValor, filas, filaTotal: r };
+      return pfCerrarCuadro({ filaTitulo, colEtiqueta: colTitulo, colValor, filas,
+                              filaTotal: r, formulaTotal: v.formula });
     }
     const t = pfTexto(ws, r, colTitulo).trim();
     if (!t) continue;
     const mes = MESES_ES.findIndex(m => t.toUpperCase().startsWith(m)) + 1;
     filas.push({ fila: r, etiqueta: t, mes: mes || null });
   }
-  return { filaTitulo, colEtiqueta: colTitulo, colValor, filas, filaTotal: null };
+  return pfCerrarCuadro({ filaTitulo, colEtiqueta: colTitulo, colValor, filas,
+                          filaTotal: null, formulaTotal: null });
+}
+
+// Dónde habría que insertar la fila de un mes que todavía no está: justo debajo del último
+// mes cargado. NO al final del cuadro — después del último mes viene la línea de acumulado
+// semestral, y el SUM del total la incluye. Una fila agregada debajo de esa línea cae fuera
+// del rango del SUM (Excel solo lo estira cuando se inserta DENTRO), así que el importe no
+// sumaría y el único síntoma sería el tie-out de más abajo dando distinto, sin decir por qué.
+function pfCerrarCuadro(cuadro) {
+  const meses = cuadro.filas.filter(f => f.mes !== null);
+  cuadro.ultimoMes = meses.length ? meses[meses.length - 1] : null;
+  // las filas sin mes que quedaron DESPUÉS del último mes (la de acumulado semestral)
+  cuadro.filasNoMes = cuadro.ultimoMes
+    ? cuadro.filas.filter(f => f.mes === null && f.fila > cuadro.ultimoMes.fila)
+    : cuadro.filas.filter(f => f.mes === null);
+  cuadro.filaAInsertar = cuadro.ultimoMes ? cuadro.ultimoMes.fila + 1 : null;
+  return cuadro;
 }
 
 function pfUltimoDiaDelMes(anio, mes) {
   return new Date(anio, mes, 0).getDate();
+}
+
+// El texto que se lee en el checklist, con el Excel abierto al lado. Dice la fila exacta y
+// contra qué etiquetas verificar que cayó en el lugar correcto, porque una instrucción del
+// tipo "agregala al cuadro" lleva justo al error que se quiere evitar.
+function pfAvisoFaltaFilaMes(cuadro, mes, valor) {
+  const nombreMes = MESES_ES[mes - 1];
+  const col = pfColLetra(cuadro.colValor);
+  let msg = `El cuadro "Explicación dif de cambio" no tiene fila para ${nombreMes}: hay que ` +
+            `agregarla a mano en el Excel`;
+
+  if (cuadro.filaAInsertar && cuadro.filasNoMes.length) {
+    // el caso de hoy: después del último mes viene la línea de acumulado, y el total la suma
+    msg += `. Insertá una fila en la ${cuadro.filaAInsertar}, debajo de ` +
+           `"${cuadro.ultimoMes.etiqueta}" y ARRIBA de "${cuadro.filasNoMes[0].etiqueta}"` +
+           (cuadro.filaTotal
+             ? `, así el total (${col}${cuadro.filaTotal}${cuadro.formulaTotal ? ` = ${cuadro.formulaTotal}` : ""}) la toma solo`
+             : "") +
+           `. Si la agregás debajo de "${cuadro.filasNoMes[0].etiqueta}" queda FUERA del total ` +
+           `y el importe no suma`;
+  } else if (cuadro.filaAInsertar) {
+    msg += `. Va en la fila ${cuadro.filaAInsertar}, debajo de "${cuadro.ultimoMes.etiqueta}"` +
+           (cuadro.filaTotal ? `, dentro del rango que suma ${col}${cuadro.filaTotal}` : "");
+  }
+
+  if (valor !== null && valor !== undefined) {
+    msg += `. El importe que cargaste (${valor}) NO se escribió: ponelo en esa fila`;
+  }
+
+  // Si entre el último mes del cuadro y el que se está cerrando hay un hueco, lo más probable
+  // es que se haya elegido mal el período (el maestro de cada mes sale del anterior, así que
+  // saltear uno no debería poder pasar). Sin este aviso, el texto de arriba manda a insertar
+  // el mes nuevo pegado al último cargado, tapando el hueco en vez de mostrarlo.
+  if (cuadro.ultimoMes && cuadro.ultimoMes.mes && mes > cuadro.ultimoMes.mes + 1) {
+    const faltan = [];
+    for (let m = cuadro.ultimoMes.mes + 1; m < mes; m++) faltan.push(MESES_ES[m - 1]);
+    msg += ` ⚠ OJO: el cuadro llega hasta ${MESES_ES[cuadro.ultimoMes.mes - 1]} y falta(n) ` +
+           `${faltan.join(", ")} en el medio. Revisá que el período sea el correcto antes de ` +
+           `insertar nada`;
+  }
+  return msg + ".";
 }
 
 // Escribe en el maestro lo que corresponda de este período. Devuelve qué escribió y qué no,
@@ -105,13 +173,11 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes }, log = 
       hecho.push(`Diferencia de cambio de ${fila.etiqueta}: ${valor}`);
       log(`  Explicación dif de cambio: ${valor} en "${fila.etiqueta}".`);
     } else if (!fila) {
-      // No se inserta la fila sola: dónde va exactamente (antes o después de la fila de
-      // acumulado, que está en el medio del cuadro) cambia lo que suma el total, y eso es
-      // una decisión contable, no de formato.
-      pendiente.push(
-        `El cuadro "Explicación dif de cambio" no tiene fila para ${MESES_ES[mes - 1]}: ` +
-        `hay que agregarla a mano en el Excel (hoy llega hasta "${cuadro.filas.length ? cuadro.filas[cuadro.filas.length - 1].etiqueta : "—"}").`
-      );
+      // La fila no se inserta sola: agregar un mes al cuadro es una decisión contable (qué
+      // período abarca, y si el acumulado semestral de abajo se recalcula), no de formato.
+      // Pero el aviso sí tiene que decir DÓNDE va, porque el lugar no es el intuitivo: el
+      // final del cuadro es el lugar equivocado (ver pfCerrarCuadro).
+      pendiente.push(pfAvisoFaltaFilaMes(cuadro, mes, valor));
       log(`  ⚠ Sin fila para ${MESES_ES[mes - 1]} en el cuadro de dif de cambio: queda pendiente a mano.`);
     } else if (valor === null) {
       pendiente.push(
@@ -127,5 +193,6 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes }, log = 
 if (typeof module !== "undefined") {
   module.exports = {
     MESES_ES, ubicarTcCierre, ubicarCuadroDifCambio, escribirDatosDelPeriodo,
+    pfAvisoFaltaFilaMes, pfColLetra,
   };
 }
