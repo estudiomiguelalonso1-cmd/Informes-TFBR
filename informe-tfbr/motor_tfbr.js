@@ -59,6 +59,16 @@ function escribirStaging(wb, layout, matcheadas, log = () => {}) {
 // Corre el proceso completo para UN archivo/moneda. No guarda el archivo (eso lo decide
 // quien llama, según si va a pedir más pasos antes de bajar el .xlsx).
 function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, altaAutomatica = true, log = () => {} }) {
+  // Primero de todo: poner el plan de cuentas de SALDOS de acuerdo con el plan oficial. Corrige
+  // los códigos tipeados con un dígito de menos y junta las filas que quedan repetidas. Va
+  // antes que cualquier otra cosa porque cambia a qué fila resuelve cada código, que es lo que
+  // usan el alta de cuentas nuevas y el emparejamiento de más abajo.
+  const limpieza = limpiarPlanDeCuentas(wb, log);
+  if (limpieza.corregidos.length || limpieza.reasignados.length || limpieza.fusionadas.length) {
+    log(`  Plan de cuentas: ${limpieza.corregidos.length} código(s) corregidos, ` +
+        `${limpieza.reasignados.length} reasignado(s), ${limpieza.fusionadas.length} fila(s) fusionadas.`);
+  }
+
   let layout = derivarLayoutSaldos(wb);
   let { cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout);
 
@@ -154,6 +164,11 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       cuentasEscritas: matcheadas.length,
       sinMapear: sinMapear.map(c => ({ codigo: c.codigo, nombre: c.nombre, saldo: c[campoSaldo] })),
       duplicadas: casosDuplicados,
+      limpiezaPlan: {
+        corregidos: limpieza.corregidos, reasignados: limpieza.reasignados,
+        fusionadas: limpieza.fusionadas, trabadas: limpieza.trabadas,
+        sinExplicar: limpieza.sinExplicar, ambiguos: limpieza.ambiguos,
+      },
       decisionesAplicadas: decisiones.borradas,
       decisionesRecodificadas: decisiones.recodificadas,
       decisionesTrabadas: decisiones.pendientes,
@@ -179,5 +194,6 @@ if (typeof module !== "undefined") {
   global.repuntarGemela = ic.repuntarGemela;
   global.aplicarDecisionesDuplicados = require("./decisiones_duplicados.js").aplicarDecisionesDuplicados;
   global.aplicarRepuntesAnexo = require("./repuntes_anexo.js").aplicarRepuntesAnexo;
+  global.limpiarPlanDeCuentas = require("./limpieza_plan.js").limpiarPlanDeCuentas;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }
