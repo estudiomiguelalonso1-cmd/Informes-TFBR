@@ -100,14 +100,64 @@ function pfUltimoDiaDelMes(anio, mes) {
   return new Date(anio, mes, 0).getDate();
 }
 
+// La etiqueta del mes nuevo, calcada del formato que ya usan las filas del cuadro
+// ("JULIO 01/07/2026-31/07/2026"). Se copia el espaciado alrededor del guión del último mes
+// en vez de fijarlo acá: la fila de acumulado usa " - " con espacios y los meses no, así que
+// el formato del cuadro es algo que se lee del archivo, no que se decide en el código.
+function pfEtiquetaDelMes(etiquetaModelo, anio, mes) {
+  const dd = String(pfUltimoDiaDelMes(anio, mes)).padStart(2, "0");
+  const mm = String(mes).padStart(2, "0");
+  const desde = `01/${mm}/${anio}`;
+  const hasta = `${dd}/${mm}/${anio}`;
+  // separador tal cual lo escribe el archivo, si se puede leer del modelo
+  const m = /\d{2}\/\d{2}\/\d{4}(\s*-\s*)\d{2}\/\d{2}\/\d{4}/.exec(etiquetaModelo || "");
+  const sep = m ? m[1] : "-";
+  return `${MESES_ES[mes - 1]} ${desde}${sep}${hasta}`;
+}
+
+// Agrega la fila del mes al cuadro. Devuelve {ok:false, motivo} sin tocar nada cuando no se
+// puede hacer con seguridad — insertar una fila corre todo lo que está debajo, así que es
+// preferible dejarlo pendiente y avisar antes que mover algo que rompa los controles.
+function pfInsertarFilaDelMes(wb, ws, cuadro, anio, mes, valor, log) {
+  if (!cuadro.filaAInsertar || !cuadro.ultimoMes) {
+    return { ok: false, motivo: "no se pudo ubicar el último mes del cuadro" };
+  }
+  // Un hueco (cerrar septiembre con agosto sin cargar) casi siempre es un período mal
+  // elegido: el maestro de cada mes sale del anterior. Insertar acá taparía el hueco en
+  // lugar de mostrarlo, así que se frena y se avisa.
+  if (cuadro.ultimoMes.mes && mes > cuadro.ultimoMes.mes + 1) {
+    return { ok: false, motivo: "hay meses sin cargar en el medio" };
+  }
+  if (cuadro.ultimoMes.mes && mes <= cuadro.ultimoMes.mes) {
+    return { ok: false, motivo: "el mes es anterior al último cargado" };
+  }
+  // El plan de cuentas guarda el número de fila de cada cuenta, y los controles del cierre lo
+  // usan tal cual. Si la fila nueva cayera dentro del plan, esos números quedarían corridos y
+  // el control de "cada cuenta se levantó" fallaría por todos lados sin motivo real. Hoy el
+  // cuadro está debajo del plan, pero se verifica en vez de darlo por sentado.
+  const layout = derivarLayoutSaldos(wb);
+  if (cuadro.filaAInsertar <= layout.planDeCuentas.hasta) {
+    return { ok: false, motivo: "la fila caería dentro del plan de cuentas" };
+  }
+
+  const modificadas = insertRowEn(wb, layout.sheet, cuadro.filaAInsertar);
+  const etiqueta = pfEtiquetaDelMes(cuadro.ultimoMes.etiqueta, anio, mes);
+  ws.getCell(cuadro.filaAInsertar, cuadro.colEtiqueta).value = etiqueta;
+  ws.getCell(cuadro.filaAInsertar, cuadro.colValor).value = valor;
+  log(`  Explicación dif de cambio: fila nueva ${cuadro.filaAInsertar} "${etiqueta}" = ${valor} ` +
+      `(${modificadas} fórmula(s) reacomodadas; el total la toma solo).`);
+  return { ok: true, fila: cuadro.filaAInsertar, etiqueta, modificadas };
+}
+
 // El texto que se lee en el checklist, con el Excel abierto al lado. Dice la fila exacta y
 // contra qué etiquetas verificar que cayó en el lugar correcto, porque una instrucción del
 // tipo "agregala al cuadro" lleva justo al error que se quiere evitar.
-function pfAvisoFaltaFilaMes(cuadro, mes, valor) {
+function pfAvisoFaltaFilaMes(cuadro, mes, valor, motivo) {
   const nombreMes = MESES_ES[mes - 1];
   const col = pfColLetra(cuadro.colValor);
-  let msg = `El cuadro "Explicación dif de cambio" no tiene fila para ${nombreMes}: hay que ` +
-            `agregarla a mano en el Excel`;
+  let msg = `El cuadro "Explicación dif de cambio" no tiene fila para ${nombreMes}` +
+            (motivo ? ` y no la agregué sola (${motivo})` : "") +
+            `: hay que agregarla a mano en el Excel`;
 
   if (cuadro.filaAInsertar && cuadro.filasNoMes.length) {
     // el caso de hoy: después del último mes viene la línea de acumulado, y el total la suma
@@ -172,11 +222,21 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes }, log = 
       ws.getCell(fila.fila, cuadro.colValor).value = valor;
       hecho.push(`Diferencia de cambio de ${fila.etiqueta}: ${valor}`);
       log(`  Explicación dif de cambio: ${valor} en "${fila.etiqueta}".`);
+    } else if (!fila && valor !== null) {
+      // La fila del mes nuevo se inserta sola, en el único lugar donde el total la toma:
+      // debajo del último mes y arriba del acumulado semestral (ver pfCerrarCuadro). Si por
+      // lo que sea no se puede hacer con seguridad, no se fuerza: queda el aviso con la
+      // ubicación exacta para hacerlo a mano.
+      const ins = pfInsertarFilaDelMes(wb, ws, cuadro, anio, mes, valor, log);
+      if (ins.ok) {
+        hecho.push(`Diferencia de cambio de ${ins.etiqueta}: ${valor} (fila ${ins.fila}, agregada al cuadro)`);
+      } else {
+        pendiente.push(pfAvisoFaltaFilaMes(cuadro, mes, valor, ins.motivo));
+        log(`  ⚠ No agregué la fila de ${MESES_ES[mes - 1]} (${ins.motivo}): queda pendiente a mano.`);
+      }
     } else if (!fila) {
-      // La fila no se inserta sola: agregar un mes al cuadro es una decisión contable (qué
-      // período abarca, y si el acumulado semestral de abajo se recalcula), no de formato.
-      // Pero el aviso sí tiene que decir DÓNDE va, porque el lugar no es el intuitivo: el
-      // final del cuadro es el lugar equivocado (ver pfCerrarCuadro).
+      // Sin importe cargado no hay nada que escribir, así que tampoco se inserta la fila:
+      // una fila vacía en el cuadro no ayuda y habría que sacarla después.
       pendiente.push(pfAvisoFaltaFilaMes(cuadro, mes, valor));
       log(`  ⚠ Sin fila para ${MESES_ES[mes - 1]} en el cuadro de dif de cambio: queda pendiente a mano.`);
     } else if (valor === null) {
@@ -191,8 +251,14 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes }, log = 
 }
 
 if (typeof module !== "undefined") {
+  // En el navegador estos vienen de los <script> que index.html carga antes que este archivo;
+  // en Node hay que traerlos a mano, igual que hacen motor_tfbr.js y validar_tfbr.js.
+  const fh = require("./formula_hojas.js");
+  const cfg = require("./config_tfbr.js");
+  global.insertRowEn = fh.insertRowEn;
+  global.derivarLayoutSaldos = cfg.derivarLayoutSaldos;
   module.exports = {
     MESES_ES, ubicarTcCierre, ubicarCuadroDifCambio, escribirDatosDelPeriodo,
-    pfAvisoFaltaFilaMes, pfColLetra,
+    pfAvisoFaltaFilaMes, pfColLetra, pfEtiquetaDelMes, pfInsertarFilaDelMes,
   };
 }

@@ -25,10 +25,16 @@ así que si mañana cambian de lugar, sigue funcionando.
 ## Uso mensual
 
 1. Exportás de Onvio los dos Sumas y Saldos (mensual y acumulado), como siempre.
-2. Los subís a la app, junto con el período y el tipo de cambio de cierre. **El tipo de cambio
-   se carga una sola vez**: hoy se tipea en tres lugares distintos (el Sumas y Saldos, el
-   Mensual R$ y el Acumulado R$), y la app lo escribe en los que corresponde, con la fecha de
-   cierre en la etiqueta.
+2. Los subís a la app, junto con el período, el tipo de cambio de cierre y la diferencia de
+   cambio del mes. **El tipo de cambio se carga una sola vez**: hoy se tipea en tres lugares
+   distintos (el Sumas y Saldos, el Mensual R$ y el Acumulado R$), y la app lo escribe en los
+   que corresponde, con la fecha de cierre en la etiqueta. La cifra de diferencia de cambio va
+   al cuadro "Explicación dif de cambio" del Acumulado R$, y **si el mes todavía no tiene fila
+   en ese cuadro, la app la agrega**: va debajo del último mes y arriba de la línea de
+   acumulado semestral, que es el único lugar donde el total la suma (agregada abajo de esa
+   línea queda fuera del `SUM` y el importe no entra, sin que nada avise). Si el mes que se
+   está cerrando deja un hueco con el último cargado, no la agrega y lo informa: un salto así
+   casi siempre es un período mal elegido.
 3. Revisás los controles en pantalla (cuentas emparejadas, totales, cuentas sin mapear).
 4. Descargás los 4 borradores, los abrís en Excel — ahí es donde se recalcula todo —,
    revisás y guardás.
