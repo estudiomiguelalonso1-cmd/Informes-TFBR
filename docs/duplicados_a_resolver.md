@@ -1,27 +1,52 @@
 # Códigos repetidos — lo que sigue sin resolverse
 
 Actualizado después de aplicar las definiciones del documento *Cuentas TFBR*
-(las filas marcadas en rojo). De los 17 casos originales ya se resolvieron 8.
+(las filas marcadas en rojo). De los 17 casos originales ya se resolvieron 10:
+8 borrando la fila que sobraba, y 2 —los de `ADELANTO VIAJE`— corrigiéndole el código,
+que resultaron no ser duplicados sino una cuenta mal codificada (sección 0).
 
 Ninguna de las cuentas que quedan viene con movimiento en el Sumas y Saldos de julio,
 así que el cierre de julio no está afectado. El problema se activa el mes que alguna
 tenga importe.
 
-## 1. Ya definidos, pero falta un dato para poder borrarlos (4)
+## 0. RESUELTO — ADELANTO VIAJE no estaba repetida: tenía el código mal (2)
 
-En estos cuatro, la fila que se decidió eliminar **está siendo leída por una línea del
+Los dos casos de `ADELANTO VIAJE` no eran un código compartido por dos cuentas distintas,
+sino **una cuenta cargada con el código de la vecina**. Los dos archivos en pesos coinciden
+en cuál es cuál, y ahí no hay ningún duplicado:
+
+| código | Mensual $ | Acumulado $ |
+|---|---|---|
+| `4223600000` | DEUDORES INCOBRABLES | DEUDORES INCOBRABLES |
+| `4225000000` | CESIÓN DE DERECHOS | CESIÓN DE DERECHOS |
+| `4226000000` | ADELANTO DE VIAJE | ADELANTO VIAJE |
+
+En los dos archivos en reales, en cambio, `ADELANTO VIAJE` estaba cargada con `4223600000`
+(Mensual R$) y con `4225000000` (Acumulado R$), y en ninguno de los dos existía una fila
+para `4226000000`.
+
+Por eso **no se borra la fila: se le corrige el código** a `4226000000`. Borrarla habría
+dejado a los dos archivos en reales sin el concepto "Adelanto Viaje" del Anexo II y sin
+ninguna fila para esa cuenta, así que el mes que Onvio mandara movimiento habría entrado
+como cuenta sin mapear.
+
+De paso arregla un error que ya estaba activo: `4223600000` resolvía a la fila de
+`ADELANTO VIAJE` (la primera de las dos), así que un importe de `DEUDORES INCOBRABLES` se
+habría reportado en la línea "Adelanto Viaje" del Anexo II.
+
+Está en `decisiones_duplicados.js` como `recodificarNombre` + `codigoNuevo`. Después de
+aplicarlo, `Anexo II!E10` (Mensual R$) y `Anexo II!E14` (Acumulado R$) —las dos rotuladas
+"Adelanto Viaje"— leen la fila que ahora sí dice `4226000000  ADELANTO VIAJE`.
+
+## 1. Ya definidos, pero falta un dato para poder borrarlos (2)
+
+En estos dos, la fila que se decidió eliminar **está siendo leída por una línea del
 Anexo II**. Si se borra sin más, esa línea queda en `#REF!`. Hace falta definir qué
 cuenta pasa a leer cada una de esas líneas (o si la línea queda en cero).
 
-### Balance Mensual R$ — 4223600000
-
-- Fila 202: `4223600000  ADELANTO VIAJE` **(la que se eliminaría)**
-  - la lee `Anexo II!E10`, que es la línea **"Adelanto Viaje"**
-- Fila 203: `4223600000  DEUDORES INCOBRABLES`
-  - la lee `EERR!C21`, que es la línea **"Otros Ingresos"**
-  - la lee `Anexo II!E97`, que es la línea **"Deudores Incobrables"**
-
-**Falta definir:** al eliminar `ADELANTO VIAJE`, ¿qué cuenta pasa a leer esa línea del Anexo II?
+Ojo: los dos son del Acumulado $, y las dos líneas que los referencian **ya estaban leyendo
+la cuenta equivocada** antes de todo esto. No son un problema de duplicados: son dos casos
+del corrimiento que se describe en la sección 3.
 
 ### Balance Acumulado $ — 4211100000
 
@@ -40,15 +65,6 @@ cuenta pasa a leer cada una de esas líneas (o si la línea queda en cero).
   - la lee `Anexo II!D42`, que es la línea **"Gastos obra social"**
 
 **Falta definir:** al eliminar `GASTOS TELEFONICOS`, ¿qué cuenta pasa a leer esa línea del Anexo II?
-
-### Balance Acumulado R$ — 4225000000
-
-- Fila 186: `4225000000  CESIÓN DE DERECHOS`
-  - la lee `Anexo II!D22`, que es la línea **"Cesión de Derechos"**
-- Fila 192: `4225000000  ADELANTO VIAJE` **(la que se eliminaría)**
-  - la lee `Anexo II!E14`, que es la línea **"Adelanto Viaje"**
-
-**Falta definir:** al eliminar `ADELANTO VIAJE`, ¿qué cuenta pasa a leer esa línea del Anexo II?
 
 ## 2. Sin definición todavía: el mismo importe se cuenta dos veces (5)
 

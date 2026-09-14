@@ -96,7 +96,10 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // "Cuentas TFBR"). Es idempotente: si la fila ya se borro en una corrida anterior, no hay
   // nada que hacer. Las que quedarian en #REF! por estar referenciadas no se tocan.
   const decisiones = aplicarDecisionesDuplicados(wb, archivoId, layout, planDeCuentas, log);
-  if (decisiones.borradas.length) {
+  // Una recodificación no mueve filas, pero sí cambia a qué fila resuelve cada código, que es
+  // justo lo que usa el emparejamiento de más abajo: hay que releer el plan igual que tras un
+  // borrado, o la cuenta corregida seguiría emparejando con el código viejo.
+  if (decisiones.borradas.length || decisiones.recodificadas.length) {
     layout = derivarLayoutSaldos(wb);
     ({ cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout));
   }
