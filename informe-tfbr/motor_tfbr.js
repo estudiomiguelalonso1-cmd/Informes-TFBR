@@ -104,6 +104,11 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
     ({ cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout));
   }
 
+  // Líneas del Anexo II que leen la cuenta de al lado en vez de la suya. Va después de las
+  // decisiones de duplicados porque esas mueven filas, y el repunte apunta a la fila donde la
+  // cuenta quedó, no donde estaba.
+  const repuntes = aplicarRepuntesAnexo(wb, archivoId, planDeCuentas, log);
+
   const { matcheadas, sinMapear, escritas } = emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo);
 
   escribirStaging(wb, layout, matcheadas, log);
@@ -150,7 +155,10 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       sinMapear: sinMapear.map(c => ({ codigo: c.codigo, nombre: c.nombre, saldo: c[campoSaldo] })),
       duplicadas: casosDuplicados,
       decisionesAplicadas: decisiones.borradas,
+      decisionesRecodificadas: decisiones.recodificadas,
       decisionesTrabadas: decisiones.pendientes,
+      repuntesAnexo: repuntes.hechos,
+      repuntesSalteados: repuntes.salteados,
       altas,
       sinEnganchar: sinEnganchar.map(a => ({ codigo: a.codigo, clave: a.clave })),
       totalEscrito,
@@ -170,5 +178,6 @@ if (typeof module !== "undefined") {
   global.buscarGemela = ic.buscarGemela;
   global.repuntarGemela = ic.repuntarGemela;
   global.aplicarDecisionesDuplicados = require("./decisiones_duplicados.js").aplicarDecisionesDuplicados;
+  global.aplicarRepuntesAnexo = require("./repuntes_anexo.js").aplicarRepuntesAnexo;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }
