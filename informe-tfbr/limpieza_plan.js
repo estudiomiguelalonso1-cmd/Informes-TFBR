@@ -9,7 +9,9 @@
 // Una cuenta con el código mal NUNCA levanta importe, porque el motor empareja por código
 // contra lo que manda Onvio. El importe entra en cero y el balance cierra igual.
 //
-// Se corrige en dos pasos, en este orden:
+// Se corrige en estos pasos, en orden:
+//   0. aplicarUnificaciones — las filas que contaduría definió como la misma cuenta escrita de
+//                            otra forma, que ninguna regla puede deducir sola.
 //   1. arreglarCodigos     — al código que no está en el plan se le prueba agregar un cero en
 //                            cada posición; si alguna combinación existe en el plan Y el
 //                            nombre coincide, ese es el código bueno.
@@ -75,6 +77,61 @@ function lpCodigoCorregido(codigo, nombre, plan) {
   }
   // Si quedan dos códigos distintos no se elige: se avisa. No vale adivinar con el plan.
   return candidatos.size === 1 ? [...candidatos][0] : null;
+}
+
+// Filas que son la MISMA cuenta del plan escrita de otra forma, y que los pasos automáticos
+// no pueden deducir porque ni el código ni el nombre coinciden con nada. Cada una es una
+// definición de contaduría, no una regla.
+//
+// Se resuelven reescribiendo la fila con el código y el nombre oficiales: a partir de ahí
+// queda igual que su par y el paso de fusión las junta, repuntando antes lo que las
+// referencie (por eso no hay que borrar nada a mano).
+// Los códigos se listan con sus variantes de 9 dígitos porque los Mensuales traen la misma
+// fila con el cero de menos, y ahí el paso 1 no la puede arreglar (el nombre tampoco coincide
+// con el del plan, que es justo el motivo por el que esta fila está en esta tabla).
+const UNIFICACIONES = [
+  {
+    codigos: ["4230300000", "423030000"], nombre: "IMP. A LOS CREDITOS", esRealmente: "4230200000",
+    // 4230300000 no existe en el plan oficial. El plan tiene UNA cuenta que cubre débitos y
+    // créditos; esta se desprendió de aquella. Confirmado con contaduría, septiembre 2026.
+  },
+  {
+    codigos: ["4230200000", "423020000"], nombre: "IMP. A LOS DEBITOS", esRealmente: "4230200000",
+    // Misma cuenta que la anterior, con el nombre cortado a la mitad.
+  },
+  {
+    codigos: ["4211200000", "421120000"], nombre: "GASTOS TELEFÓNICOS", esRealmente: "4211200000",
+    // El plan tiene UNA sola cuenta de teléfono ("GASTOS EN EQ. TELEFÓNICOS"), así que estas
+    // no son dos cuentas: es la misma cargada dos veces con el nombre escrito distinto.
+  },
+];
+
+// Reescribe las filas de UNIFICACIONES con el código y el nombre que dice el plan. Conserva el
+// espaciado que el archivo usa entre código y nombre, porque el BUSCARV de la fila busca el
+// texto exacto y el separador es un doble espacio en unos archivos y simple en otros.
+function aplicarUnificaciones(wb, layout, plan, log = () => {}) {
+  const ws = wb.getWorksheet(layout.sheet);
+  const unificadas = [], noEncontradas = [];
+  for (const u of UNIFICACIONES) {
+    const oficial = plan[u.esRealmente];
+    if (!oficial) { noEncontradas.push({ ...u, motivo: `${u.esRealmente} no está en el plan` }); continue; }
+    let hecha = false;
+    for (let r = layout.planDeCuentas.desde; r <= layout.planDeCuentas.hasta; r++) {
+      const texto = String(ws.getCell(r, layout.keyCol).value || "").trim();
+      if (!texto) continue;
+      if (!u.codigos.includes(lpCodigoDe(texto))) continue;
+      if (!lpMismoNombre(lpNombreDe(texto), u.nombre)) continue;
+      const sep = /^\s*[\d.]+(\s*-?\s*)/.exec(texto);
+      const nuevo = `${u.esRealmente}${sep ? sep[1] : "  "}${oficial}`;
+      if (nuevo === texto) { hecha = true; continue; }        // ya estaba unificada
+      ws.getCell(r, layout.keyCol).value = nuevo;
+      unificadas.push({ fila: r, de: texto, a: nuevo });
+      log(`  ${layout.sheet}!${r}: "${texto}" → "${nuevo}"`);
+      hecha = true;
+    }
+    if (!hecha) noEncontradas.push({ ...u, motivo: "la fila ya no está en este archivo" });
+  }
+  return { unificadas, noEncontradas };
 }
 
 // Paso 1. Devuelve { corregidos, sinExplicar } y deja el workbook con los códigos arreglados.
@@ -178,6 +235,9 @@ function fusionarDuplicados(wb, layout, planDeCuentas, log = () => {}) {
 // Corre los dos pasos. Devuelve todo lo que hizo y lo que no pudo, para mostrarlo en pantalla.
 function limpiarPlanDeCuentas(wb, log = () => {}) {
   let layout = derivarLayoutSaldos(wb);
+  // Las unificaciones definidas van primero: dejan la fila igual que su par para que el paso
+  // de fusión las junte sola.
+  const paso0 = aplicarUnificaciones(wb, layout, PLAN_OFICIAL, log);
   const paso1 = arreglarCodigos(wb, layout, PLAN_OFICIAL, log);
 
   layout = derivarLayoutSaldos(wb);
@@ -197,7 +257,7 @@ function limpiarPlanDeCuentas(wb, log = () => {}) {
   const faltantes = [];
   for (const cod of PLAN_CENTROS_COSTO) if (!cuentas[cod]) faltantes.push(cod);
 
-  return { ...paso1, ...paso1b, ...paso2, faltantesConCentroCosto: faltantes, layout, cuentas };
+  return { ...paso0, ...paso1, ...paso1b, ...paso2, faltantesConCentroCosto: faltantes, layout, cuentas };
 }
 
 if (typeof module !== "undefined") {
@@ -213,7 +273,8 @@ if (typeof module !== "undefined") {
   global.PLAN_OFICIAL = po.PLAN_OFICIAL;
   global.PLAN_CENTROS_COSTO = po.PLAN_CENTROS_COSTO;
   module.exports = {
-    limpiarPlanDeCuentas, arreglarCodigos, reasignarPorNombre, fusionarDuplicados,
+    limpiarPlanDeCuentas, aplicarUnificaciones, arreglarCodigos, reasignarPorNombre,
+    fusionarDuplicados, UNIFICACIONES,
     lpCodigoCorregido, lpCodigoPorNombre, lpMismoNombre,
     lpNombreDe, lpCodigoDe, lpNormaliza,
   };

@@ -102,18 +102,6 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
     }
   }
 
-  // Decisiones de contaduria sobre codigos usados por dos cuentas distintas (documento
-  // "Cuentas TFBR"). Es idempotente: si la fila ya se borro en una corrida anterior, no hay
-  // nada que hacer. Las que quedarian en #REF! por estar referenciadas no se tocan.
-  const decisiones = aplicarDecisionesDuplicados(wb, archivoId, layout, planDeCuentas, log);
-  // Una recodificación no mueve filas, pero sí cambia a qué fila resuelve cada código, que es
-  // justo lo que usa el emparejamiento de más abajo: hay que releer el plan igual que tras un
-  // borrado, o la cuenta corregida seguiría emparejando con el código viejo.
-  if (decisiones.borradas.length || decisiones.recodificadas.length) {
-    layout = derivarLayoutSaldos(wb);
-    ({ cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout));
-  }
-
   // Líneas del Anexo II que leen la cuenta de al lado en vez de la suya. Va después de las
   // decisiones de duplicados porque esas mueven filas, y el repunte apunta a la fila donde la
   // cuenta quedó, no donde estaba.
@@ -169,9 +157,6 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
         fusionadas: limpieza.fusionadas, trabadas: limpieza.trabadas,
         sinExplicar: limpieza.sinExplicar, ambiguos: limpieza.ambiguos,
       },
-      decisionesAplicadas: decisiones.borradas,
-      decisionesRecodificadas: decisiones.recodificadas,
-      decisionesTrabadas: decisiones.pendientes,
       repuntesAnexo: repuntes.hechos,
       repuntesSalteados: repuntes.salteados,
       altas,
@@ -192,7 +177,6 @@ if (typeof module !== "undefined") {
   global.insertarCuentaEnSaldos = ic.insertarCuentaEnSaldos;
   global.buscarGemela = ic.buscarGemela;
   global.repuntarGemela = ic.repuntarGemela;
-  global.aplicarDecisionesDuplicados = require("./decisiones_duplicados.js").aplicarDecisionesDuplicados;
   global.aplicarRepuntesAnexo = require("./repuntes_anexo.js").aplicarRepuntesAnexo;
   global.limpiarPlanDeCuentas = require("./limpieza_plan.js").limpiarPlanDeCuentas;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
