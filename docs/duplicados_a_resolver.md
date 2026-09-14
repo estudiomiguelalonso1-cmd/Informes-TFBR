@@ -51,16 +51,18 @@ Están en la tabla `UNIFICACIONES` de `limpieza_plan.js`, cada una con el motivo
 - **`GASTOS TELEFÓNICOS`** — el plan tiene una sola cuenta de teléfono,
   `4211200000 GASTOS EN EQ. TELEFÓNICOS`. No eran dos cuentas: era la misma cargada dos veces
   con el nombre escrito distinto. Queda el nombre oficial.
+- **`IMP BIENES SOCIEDADES`** — es el impuesto a los bienes personales de sociedades, que en el
+  plan se llama `4223000000 BS. PERSONALES ACCIO. Y PARTICIPACIONES`. Queda el nombre oficial.
 
 ## Lo que sigue sin resolverse
 
 Una fila por archivo, y ninguna es un duplicado:
 
-- **Mensual $ y Mensual R$** — `422300000 IMP BIENES SOCIEDADES`. No hay nada con ese nombre
-  en el plan oficial. Lo más parecido es `4223000000 BS. PERSONALES ACCIO. Y PARTICIPACIONES`,
-  que es a lo que apunta el nombre, pero no coinciden lo suficiente como para decidirlo solo.
-- **Acumulado $ y Acumulado R$** — una fila con el "código" `412` y el texto `OTROS INGRESOS`.
-  No es una cuenta: es un título de agrupación que quedó dentro del rango del plan.
+Solo una, en los dos Acumulados: una fila con el "código" `412` y el texto `OTROS INGRESOS`.
+No es una cuenta — el plan la tiene como `4120000000 OTROS INGRESOS`, `imputable = NO`, o sea
+un título de agrupación. Quedó copiada dentro de la lista de cuentas, entre `RECUPERO DE
+GASTOS` y `VENTA RODADO`. No la lee ninguna hoja y está en cero, así que no afecta ningún
+número; es ruido dentro del plan.
 
 ## Aparte: el corrimiento del Anexo II
 

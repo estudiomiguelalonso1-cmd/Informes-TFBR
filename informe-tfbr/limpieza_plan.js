@@ -46,6 +46,24 @@ function lpMismoNombre(a, b) {
   return true;
 }
 
+// Variante que además acepta abreviaturas: una palabra vale por otra si una es el principio de
+// la otra ("ACC" por "ACCIO", "BS" por "BS"). Se usa SOLO para decidir si dos filas que ya
+// comparten código son la misma cuenta; nunca para buscar a qué código pertenece un nombre,
+// donde un falso positivo mandaría el importe a otra cuenta.
+function lpMismoNombreLaxo(a, b) {
+  if (lpMismoNombre(a, b)) return true;
+  const A = [...lpPalabras(a)], B = [...lpPalabras(b)];
+  if (A.length !== B.length || !A.length) return false;
+  const libres = B.slice();
+  for (const w of A) {
+    const i = libres.findIndex(x => x === w ||
+      (w.length >= 3 && x.startsWith(w)) || (x.length >= 3 && w.startsWith(x)));
+    if (i === -1) return false;
+    libres.splice(i, 1);
+  }
+  return true;
+}
+
 // El código que el plan le da a una cuenta con este nombre. Solo sirve si hay UNO.
 function lpCodigoPorNombre(nombre, plan) {
   const hits = [];
@@ -98,6 +116,11 @@ const UNIFICACIONES = [
   {
     codigos: ["4230200000", "423020000"], nombre: "IMP. A LOS DEBITOS", esRealmente: "4230200000",
     // Misma cuenta que la anterior, con el nombre cortado a la mitad.
+  },
+  {
+    codigos: ["4223000000", "422300000"], nombre: "IMP BIENES SOCIEDADES", esRealmente: "4223000000",
+    // Es el impuesto a los bienes personales de sociedades, que en el plan se llama
+    // "BS. PERSONALES ACCIO. Y PARTICIPACIONES". Queda el nombre oficial.
   },
   {
     codigos: ["4211200000", "421120000"], nombre: "GASTOS TELEFÓNICOS", esRealmente: "4211200000",
@@ -202,9 +225,9 @@ function fusionarDuplicados(wb, layout, planDeCuentas, log = () => {}) {
     // además tienen que coincidir con el nombre oficial: si una no coincide, esa fila es otra
     // cuenta mal codificada y la decide el paso 1b, no una fusión.
     const base = lpNombreDe(filas[0].texto);
-    const todasIguales = filas.every(f => lpMismoNombre(base, lpNombreDe(f.texto)));
+    const todasIguales = filas.every(f => lpMismoNombreLaxo(base, lpNombreDe(f.texto)));
     const oficial = typeof PLAN_OFICIAL !== "undefined" ? PLAN_OFICIAL[codigo] : null;
-    if (!todasIguales || (oficial && !lpMismoNombre(oficial, base))) {
+    if (!todasIguales || (oficial && !lpMismoNombreLaxo(oficial, base))) {
       trabadas.push({ codigo, motivo: oficial
           ? `el plan dice que ${codigo} es "${oficial}"`
           : "el mismo código lo usan cuentas con nombres distintos",
@@ -213,6 +236,12 @@ function fusionarDuplicados(wb, layout, planDeCuentas, log = () => {}) {
     }
     // se queda la primera; las demás se repuntan hacia ella y se borran
     const queda = filas[0];
+    // y se la deja con el nombre que dice el plan, para que no sobreviva la abreviatura
+    if (oficial && lpNombreDe(queda.texto) !== oficial) {
+      const ws0 = wb.getWorksheet(layout.sheet);
+      const sep = /^\s*[\d.]+(\s*-?\s*)/.exec(queda.texto);
+      ws0.getCell(queda.fila, layout.keyCol).value = `${codigo}${sep ? sep[1] : "  "}${oficial}`;
+    }
     for (let i = filas.length - 1; i >= 1; i--) {
       const sobra = filas[i];
       const movidas = repuntarGemela(wb, layout.sheet, sobra.fila, queda.fila, () => {});
@@ -275,7 +304,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     limpiarPlanDeCuentas, aplicarUnificaciones, arreglarCodigos, reasignarPorNombre,
     fusionarDuplicados, UNIFICACIONES,
-    lpCodigoCorregido, lpCodigoPorNombre, lpMismoNombre,
+    lpCodigoCorregido, lpCodigoPorNombre, lpMismoNombre, lpMismoNombreLaxo,
     lpNombreDe, lpCodigoDe, lpNormaliza,
   };
 }
