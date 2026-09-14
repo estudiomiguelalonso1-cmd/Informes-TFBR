@@ -1,73 +1,118 @@
-# Códigos repetidos que quedan sin resolver
+# Códigos repetidos — lo que sigue sin resolverse
 
-Los que se podían resolver sin cambiar ningún número ya se borraron de los maestros
-corregidos (la fila huérfana de cada par, dejando la que está enganchada a los estados).
-Los que siguen acá **cambian algo del balance según cómo se resuelvan**, así que
-necesitan una decisión contable. La app los avisa en cada corrida y no los toca.
+Actualizado después de aplicar las definiciones del documento *Cuentas TFBR*
+(las filas marcadas en rojo). De los 17 casos originales ya se resolvieron 8.
 
-Hoy casi todas estas cuentas están en cero, así que el balance de julio no está
-distorsionado — el problema se activa el mes que alguna tenga movimiento.
+Ninguna de las cuentas que quedan viene con movimiento en el Sumas y Saldos de julio,
+así que el cierre de julio no está afectado. El problema se activa el mes que alguna
+tenga importe.
 
-## 1. El mismo código usado por dos cuentas diferentes (8)
+## 1. Ya definidos, pero falta un dato para poder borrarlos (4)
 
-Hay que decidir qué código le corresponde a cada cuenta. Borrar una fila acá elimina
-una cuenta real del balance.
+En estos cuatro, la fila que se decidió eliminar **está siendo leída por una línea del
+Anexo II**. Si se borra sin más, esa línea queda en `#REF!`. Hace falta definir qué
+cuenta pasa a leer cada una de esas líneas (o si la línea queda en cero).
 
-| Archivo | Código | Fila | Cuenta | La referencia |
-|---|---|---|---|---|
-| Balance Mensual R$ | 4223600000 | 207 | 4223600000  ADELANTO VIAJE | `Anexo II!E10` |
-| Balance Mensual R$ | 4223600000 | 208 | 4223600000  DEUDORES INCOBRABLES | `EERR!C21`, `Anexo II!E97` |
-| Balance Acumulado $ | 4211100000 | 132 | 4211100000  REDONDEO | `Anexo II!D74` |
-| Balance Acumulado $ | 4211100000 | 133 | 4211100000  SERVICIOS DE LIMPIEZA | `Anexo II!D45` |
-| Balance Acumulado $ | 4211200000 | 129 | 4211200000  GASTOS EN EQ. TELEFÓNICOS | `Anexo II!E17` |
-| Balance Acumulado $ | 4211200000 | 134 | 4211200000  GASTOS TELEFÓNICOS | `Anexo II!D42` |
-| Balance Acumulado $ | 4211700000 | 136 | 4211700000  GASTOS DE CAPACITACION | `Anexo II!D71` |
-| Balance Acumulado $ | 4211700000 | 142 | 4211700000  GASTOS CAPACITACIÓN | — |
-| Balance Acumulado $ | 4230200000 | 211 | 4230200000  IMP. A LOS DÉBITOS Y CRÉDITOS LEY 25,413 | — |
-| Balance Acumulado $ | 4230200000 | 212 | 4230200000  IMP. A LOS DEBITOS | `Anexo II!F54` |
-| Balance Acumulado $ | 4212800000 | 152 | 4212800000  TASA AFIP | `Anexo II!D82` |
-| Balance Acumulado $ | 4212800000 | 221 | 4212800000  TASAS AFIP | — |
-| Balance Acumulado R$ | 4225000000 | 188 | 4225000000  CESIÓN DE DERECHOS | `Anexo II!D22` |
-| Balance Acumulado R$ | 4225000000 | 194 | 4225000000  ADELANTO VIAJE | `Anexo II!E14` |
-| Balance Acumulado R$ | 4230200000 | 196 | 4230200000  IMP. A LOS DÉBITOS Y CRÉDITOS LEY 25,413 | `Anexo II!F56` |
-| Balance Acumulado R$ | 4230200000 | 197 | 4230200000  IMP. A LOS DEBITOS | — |
+### Balance Mensual R$ — 4223600000
 
-## 2. Doble conteo: el mismo importe entra dos veces (5)
+- Fila 202: `4223600000  ADELANTO VIAJE` **(la que se eliminaría)**
+  - la lee `Anexo II!E10`, que es la línea **"Adelanto Viaje"**
+- Fila 203: `4223600000  DEUDORES INCOBRABLES`
+  - la lee `EERR!C21`, que es la línea **"Otros Ingresos"**
+  - la lee `Anexo II!E97`, que es la línea **"Deudores Incobrables"**
 
-Las dos filas levantan el mismo importe y las dos están enganchadas a los estados.
-Hay que decidir en qué línea tiene que quedar.
+**Falta definir:** al eliminar `ADELANTO VIAJE`, ¿qué cuenta pasa a leer esa línea del Anexo II?
+
+### Balance Acumulado $ — 4211100000
+
+- Fila 130: `4211100000  REDONDEO`
+  - la lee `Anexo II!D74`, que es la línea **"Refrigerios"**
+- Fila 131: `4211100000  SERVICIOS DE LIMPIEZA` **(la que se eliminaría)**
+  - la lee `Anexo II!D45`, que es la línea **"Gastos Telefonico"**
+
+**Falta definir:** al eliminar `SERVICIOS DE LIMPIEZA`, ¿qué cuenta pasa a leer esa línea del Anexo II?
+
+### Balance Acumulado $ — 4211200000
+
+- Fila 127: `4211200000  GASTOS EN EQ. TELEFÓNICOS`
+  - la lee `Anexo II!E17`, que es la línea **"Adicional obra social"**
+- Fila 132: `4211200000  GASTOS TELEFÓNICOS` **(la que se eliminaría)**
+  - la lee `Anexo II!D42`, que es la línea **"Gastos obra social"**
+
+**Falta definir:** al eliminar `GASTOS TELEFONICOS`, ¿qué cuenta pasa a leer esa línea del Anexo II?
+
+### Balance Acumulado R$ — 4225000000
+
+- Fila 186: `4225000000  CESIÓN DE DERECHOS`
+  - la lee `Anexo II!D22`, que es la línea **"Cesión de Derechos"**
+- Fila 192: `4225000000  ADELANTO VIAJE` **(la que se eliminaría)**
+  - la lee `Anexo II!E14`, que es la línea **"Adelanto Viaje"**
+
+**Falta definir:** al eliminar `ADELANTO VIAJE`, ¿qué cuenta pasa a leer esa línea del Anexo II?
+
+## 2. Sin definición todavía: el mismo importe se cuenta dos veces (5)
+
+Estos no estaban en el documento. Las dos filas tienen el mismo código **y el mismo
+nombre**, así que las dos levantan el mismo importe del Sumas y Saldos, y las dos
+alimentan líneas de los estados: el importe entra dos veces.
 
 ### Balance Mensual R$ — 4212800000
 
-- **Fila 166**: `4212800000  TASAS AFIP` — `Anexo II!D105` = `+SALDOS!C166`
-- **Fila 222**: `4212800000  TASAS AFIP` — `Anexo II!E21` = `+SALDOS!C222`
+- Fila 161: `4212800000  TASAS AFIP`
+  - la lee `Anexo II!D105` — línea **"Tasas AFIP"** — `+SALDOS!C161`
+- Fila 217: `4212800000  TASAS AFIP`
+  - la lee `Anexo II!E21` — línea **"Ajuste saldo proveedores"** — `+SALDOS!C217`
 
-las dos filas están referenciadas por líneas distintas (Anexo II!D105 y Anexo II!E21): cuál sobrevive cambia en qué línea del estado se reporta el importe.
+**Falta definir:** cuál de las dos filas queda, y en qué línea tiene que reportarse el importe.
 
 ### Balance Acumulado $ — 4120500000
 
-- **Fila 116**: `4120500000  INTERESES GANADOS` — `EERR!C25` = `+SALDOS!D117+SALDOS!D122+SALDOS!D116`
-- **Fila 122**: `4120500000  INTERESES GANADOS` — `EERR!C25` = `+SALDOS!D117+SALDOS!D122+SALDOS!D116`
+- Fila 114: `4120500000  INTERESES GANADOS`
+  - la lee `EERR!C25` — línea **"Intereses"** — `+SALDOS!D115+SALDOS!D120+SALDOS!D114`
+- Fila 120: `4120500000  INTERESES GANADOS`
+  - la lee `EERR!C25` — línea **"Intereses"** — `+SALDOS!D115+SALDOS!D120+SALDOS!D114`
 
-la misma fórmula (EERR!C25) suma las dos filas, así que el importe entra dos veces en esa línea. Hay que sacar uno de los dos términos de la fórmula antes de borrar la fila.
+**Falta definir:** cuál de las dos filas queda, y en qué línea tiene que reportarse el importe.
 
 ### Balance Acumulado $ — 4222900000
 
-- **Fila 190**: `4222900000  ROPA DE TRABAJO` — `Anexo II!E32` = `+SALDOS!C190`
-- **Fila 195**: `4222900000  ROPA DE TRABAJO` — `Anexo II!E53` = `+SALDOS!C195`
+- Fila 188: `4222900000  ROPA DE TRABAJO`
+  - la lee `Anexo II!E32` — línea **"Estibajes"** — `+SALDOS!C188`
+- Fila 193: `4222900000  ROPA DE TRABAJO`
+  - la lee `Anexo II!E53` — línea **"Imp. Bienes Acc. Y Part. Soc."** — `+SALDOS!C193`
 
-las dos filas están referenciadas por líneas distintas (Anexo II!E32 y Anexo II!E53): cuál sobrevive cambia en qué línea del estado se reporta el importe.
+**Falta definir:** cuál de las dos filas queda, y en qué línea tiene que reportarse el importe.
 
 ### Balance Acumulado R$ — 4120500000
 
-- **Fila 117**: `4120500000  INTERESES GANADOS` — `EERR!C24` = `+SALDOS!E117`
-- **Fila 123**: `4120500000  INTERESES GANADOS` — `EERR!C22` = `+SALDOS!E118+SALDOS!E123+SALDOS!E189+SALDOS!E119`
+- Fila 115: `4120500000  INTERESES GANADOS`
+  - la lee `EERR!C24` — línea **"Intereses"** — `+SALDOS!E115`
+- Fila 121: `4120500000  INTERESES GANADOS`
+  - la lee `EERR!C22` — línea **"Otros ingresos y egresos"** — `+SALDOS!E116+SALDOS!E121+SALDOS!E187+SALDOS!E117`
 
-las dos filas están referenciadas por líneas distintas (EERR!C24 y EERR!C22): cuál sobrevive cambia en qué línea del estado se reporta el importe.
+**Falta definir:** cuál de las dos filas queda, y en qué línea tiene que reportarse el importe.
 
 ### Balance Acumulado R$ — 4230400000
 
-- **Fila 199**: `4230400000  INTERESES RESARCITORIOS` — `Anexo II!E58` = `+SALDOS!D199`
-- **Fila 208**: `4230400000 INTERESES RESARCITORIOS` — `Anexo II!F58` = `+SALDOS!D208`
+- Fila 196: `4230400000  INTERESES RESARCITORIOS`
+  - la lee `Anexo II!E58` — línea **"Intereses resarcitorios"** — `+SALDOS!D196`
+- Fila 205: `4230400000 INTERESES RESARCITORIOS`
+  - la lee `Anexo II!F58` — línea **"Intereses resarcitorios"** — `+SALDOS!D205`
 
-las dos filas están referenciadas por líneas distintas (Anexo II!E58 y Anexo II!F58): cuál sobrevive cambia en qué línea del estado se reporta el importe.
+**Falta definir:** cuál de las dos filas queda, y en qué línea tiene que reportarse el importe.
+
+## 3. Aparte: líneas del Anexo II que leen una cuenta que no es la suya
+
+Esto salió al revisar los casos de arriba y es un problema distinto, del **Acumulado $**:
+varias líneas del Anexo II leen una cuenta que no corresponde a su propio rótulo, como si en
+algún momento se hubieran corrido una fila.
+
+| Línea del Anexo II | Rótulo de la línea | Cuenta que lee |
+|---|---|---|
+| `D42` | Gastos obra social | `4211200000 GASTOS TELEFÓNICOS` |
+| `D45` | Gastos Telefonico | `4211100000 SERVICIOS DE LIMPIEZA` |
+| `D74` | Refrigerios | `4211100000 REDONDEO` |
+| `E17` | Adicional obra social | `4211200000 GASTOS EN EQ. TELEFÓNICOS` |
+
+Hoy no cambia ningún número porque esas cuentas están en cero, pero conviene revisarlo junto
+con los casos del punto 1: es la misma definición (qué cuenta tiene que leer cada línea).

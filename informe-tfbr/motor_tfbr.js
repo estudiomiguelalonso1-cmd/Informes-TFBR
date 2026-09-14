@@ -58,7 +58,7 @@ function escribirStaging(wb, layout, matcheadas, log = () => {}) {
 
 // Corre el proceso completo para UN archivo/moneda. No guarda el archivo (eso lo decide
 // quien llama, según si va a pedir más pasos antes de bajar el .xlsx).
-function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, altaAutomatica = true, log = () => {} }) {
+function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, altaAutomatica = true, log = () => {} }) {
   let layout = derivarLayoutSaldos(wb);
   let { cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout);
 
@@ -90,6 +90,15 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, altaAutomatica = t
       layout = derivarLayoutSaldos(wb);
       ({ cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout));
     }
+  }
+
+  // Decisiones de contaduria sobre codigos usados por dos cuentas distintas (documento
+  // "Cuentas TFBR"). Es idempotente: si la fila ya se borro en una corrida anterior, no hay
+  // nada que hacer. Las que quedarian en #REF! por estar referenciadas no se tocan.
+  const decisiones = aplicarDecisionesDuplicados(wb, archivoId, layout, planDeCuentas, log);
+  if (decisiones.borradas.length) {
+    layout = derivarLayoutSaldos(wb);
+    ({ cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout));
   }
 
   const { matcheadas, sinMapear, escritas } = emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo);
@@ -137,6 +146,8 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, altaAutomatica = t
       cuentasEscritas: matcheadas.length,
       sinMapear: sinMapear.map(c => ({ codigo: c.codigo, nombre: c.nombre, saldo: c[campoSaldo] })),
       duplicadas: casosDuplicados,
+      decisionesAplicadas: decisiones.borradas,
+      decisionesTrabadas: decisiones.pendientes,
       altas,
       sinEnganchar: sinEnganchar.map(a => ({ codigo: a.codigo, clave: a.clave })),
       totalEscrito,
@@ -155,5 +166,6 @@ if (typeof module !== "undefined") {
   global.insertarCuentaEnSaldos = ic.insertarCuentaEnSaldos;
   global.buscarGemela = ic.buscarGemela;
   global.repuntarGemela = ic.repuntarGemela;
+  global.aplicarDecisionesDuplicados = require("./decisiones_duplicados.js").aplicarDecisionesDuplicados;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }

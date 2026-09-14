@@ -221,7 +221,7 @@ async function procesarPeriodo() {
 
       const cuentasExport = App.cuentasExport[a.periodo];
       const { resumen, planDeCuentas, escritas } =
-        procesarMaestroTFBR({ wb, cuentasExport, campoSaldo: a.campoSaldo, log });
+        procesarMaestroTFBR({ wb, cuentasExport, campoSaldo: a.campoSaldo, archivoId: a.id, log });
 
       // el TC de cierre y la cifra de dif de cambio solo existen en uno de los 4 archivos:
       // escribirDatosDelPeriodo se fija solo si este los tiene, y avisa lo que no pudo cargar
