@@ -57,7 +57,44 @@ async function iniciar() {
   await revisarMaestrosExistentes();
 }
 
-function abrirConfig() { mostrar("cardConfig", true); }
+// Igual que la de cuentas: ventana encima, no una card que alargue la página.
+function abrirConfig() {
+  mostrar("ovConfig", true);
+  document.body.classList.add("sin-scroll");
+  // Si ya está configurado, se muestra lo que hay: abrirla para cambiar la rama no tendría
+  // que obligar a volver a pegar el token.
+  const s = loadGhtSettings();
+  if (s.token) document.getElementById("cfgToken").value = s.token;
+  if (s.repo) document.getElementById("cfgRepo").value = s.repo;
+  if (s.rama) document.getElementById("cfgRama").value = s.rama;
+  if (s.carpeta) document.getElementById("cfgCarpeta").value = s.carpeta;
+}
+
+function cerrarConfig() {
+  mostrar("ovConfig", false);
+  soltarScrollSiNoQuedaVentana();
+}
+
+// El bloqueo del scroll de fondo se suelta cuando no queda NINGUNA ventana abierta: si no,
+// cerrar una con la otra todavía arriba dejaba la página de atrás moviéndose.
+function soltarScrollSiNoQuedaVentana() {
+  const abierta = ["ovConfig", "ovCuentas"].some(id => {
+    const el = document.getElementById(id);
+    return el && !el.classList.contains("hidden");
+  });
+  if (!abierta) document.body.classList.remove("sin-scroll");
+}
+
+function cfgFondoGh(ev) {
+  if (ev.target && ev.target.id === "ovConfig") cerrarConfig();
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  const ov = document.getElementById("ovConfig");
+  if (ov && !ov.classList.contains("hidden")) cerrarConfig();
+});
+
 function mostrarAyudaToken() { mostrar("ayudaToken", true); }
 
 async function guardarConfig() {

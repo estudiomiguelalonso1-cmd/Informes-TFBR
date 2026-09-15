@@ -181,12 +181,12 @@ tbody tr:hover{background:var(--fondo-alto);}
 tr:last-child td{border-bottom:none;}
 .num{text-align:right; font-variant-numeric:tabular-nums;}
 
-select, input[type=text]{
+select, input[type=text], input[type=password]{
   font-family:inherit; padding:9px 11px; border-radius:var(--radio-chico);
   border:1px solid var(--borde-fuerte); font-size:13.5px; width:100%;
   background:var(--superficie); color:var(--tinta); transition:var(--transicion);
 }
-select:focus, input[type=text]:focus{
+select:focus, input[type=text]:focus, input[type=password]:focus{
   outline:none; border-color:var(--acento); box-shadow:0 0 0 3px rgba(15,107,92,.14);
 }
 .pending-row{background:#FBFAF4;}

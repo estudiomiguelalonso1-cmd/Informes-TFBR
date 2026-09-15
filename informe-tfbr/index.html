@@ -12,7 +12,7 @@
   <div class="topbar">
     <div>
       <span class="eyebrow">Transportes Furlong do Brasil S.A.</span>
-      <h1>Cierre mensual — 4 balances</h1>
+      <h1>Balance mensual y acumulado — pesos y reales</h1>
     </div>
     <div>
       <button class="secondary" onclick="abrirConfigCuentas()">Configurar cuentas</button>
@@ -29,40 +29,6 @@
       tener que subirlos cada vez. Se configura una sola vez.
     </p>
     <div style="margin-top:14px;"><button onclick="abrirConfig()">Configurar ahora</button></div>
-  </div>
-
-  <!-- ---------- panel de configuración ---------- -->
-  <div class="card hidden" id="cardConfig">
-    <h2>Configuración de GitHub</h2>
-    <p class="footer-note">
-      El token queda guardado solo en este navegador — no se manda a ningún lado más que
-      a GitHub. <a href="#" onclick="mostrarAyudaToken();return false;">¿Cómo lo genero?</a>
-    </p>
-    <div id="ayudaToken" class="hidden footer-note" style="margin-top:10px;">
-      github.com → tu foto de perfil → <b>Settings</b> → (al fondo del menú)
-      <b>Developer settings</b> → <b>Personal access tokens → Tokens (classic)</b> →
-      <b>Generate new token (classic)</b>. Marcá el casillero <b>repo</b> y generá.
-      Copiá el token (empieza con <code>ghp_</code>): GitHub solo lo muestra una vez.
-    </div>
-    <div style="margin-top:16px; display:grid; gap:12px; max-width:480px;">
-      <label>Token
-        <input type="password" id="cfgToken" placeholder="ghp_...">
-      </label>
-      <label>Usuario/organización y repositorio
-        <input type="text" id="cfgRepo" placeholder="tuusuario/turepo">
-      </label>
-      <label>Rama
-        <input type="text" id="cfgRama" placeholder="main" value="main">
-      </label>
-      <label>Carpeta dentro del repositorio
-        <input type="text" id="cfgCarpeta" placeholder="informe-tfbr" value="informe-tfbr">
-      </label>
-    </div>
-    <div style="margin-top:18px;">
-      <button onclick="guardarConfig()">Guardar</button>
-      <span class="spinner hidden" id="spinnerConfig">Probando conexión…</span>
-    </div>
-    <div id="configStatus"></div>
   </div>
 
   <!-- ---------- primera vez: subir los 4 maestros ---------- -->
@@ -149,6 +115,46 @@
   <div class="card hidden" id="cardLog">
     <h2>Registro</h2>
     <div class="log" id="logTexto"></div>
+  </div>
+
+  <!-- ---------- configuración de GitHub (ventana) ---------- -->
+  <div class="modal-overlay hidden" id="ovConfig" onclick="cfgFondoGh(event)">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ghTitulo">
+      <div class="cfg-head">
+        <h2 id="ghTitulo">Configuración de GitHub</h2>
+        <button class="cfg-cerrar" onclick="cerrarConfig()" aria-label="Cerrar">&times;</button>
+      </div>
+      <p class="footer-note" style="margin-top:0;">
+        El token queda guardado solo en este navegador — no se manda a ningún lado más que
+        a GitHub. <a href="#" onclick="mostrarAyudaToken();return false;">¿Cómo lo genero?</a>
+      </p>
+      <div id="ayudaToken" class="hidden footer-note" style="margin-top:10px;">
+        github.com → tu foto de perfil → <b>Settings</b> → (al fondo del menú)
+        <b>Developer settings</b> → <b>Personal access tokens → Tokens (classic)</b> →
+        <b>Generate new token (classic)</b>. Marcá el casillero <b>repo</b> y generá.
+        Copiá el token (empieza con <code>ghp_</code>): GitHub solo lo muestra una vez.
+      </div>
+      <div style="margin-top:16px; display:grid; gap:12px;">
+        <label>Token
+          <input type="password" id="cfgToken" placeholder="ghp_...">
+        </label>
+        <label>Usuario/organización y repositorio
+          <input type="text" id="cfgRepo" placeholder="tuusuario/turepo">
+        </label>
+        <label>Rama
+          <input type="text" id="cfgRama" placeholder="main" value="main">
+        </label>
+        <label>Carpeta dentro del repositorio
+          <input type="text" id="cfgCarpeta" placeholder="informe-tfbr" value="informe-tfbr">
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button onclick="guardarConfig()">Guardar</button>
+        <button class="secondary" onclick="cerrarConfig()">Cerrar</button>
+        <span class="spinner hidden" id="spinnerConfig">Probando conexión…</span>
+      </div>
+      <div id="configStatus"></div>
+    </div>
   </div>
 
   <!-- ---------- configurar cuentas (ventana) ---------- -->

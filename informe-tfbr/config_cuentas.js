@@ -203,7 +203,7 @@ async function abrirConfigCuentas() {
 
 function cerrarConfigCuentas() {
   mostrar("ovCuentas", false);
-  document.body.classList.remove("sin-scroll");
+  soltarScrollSiNoQuedaVentana();
 }
 
 // Click en el fondo (no en la ventana) = cerrar.
