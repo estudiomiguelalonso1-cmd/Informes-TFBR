@@ -76,13 +76,17 @@ controlar nada.
 Además, al procesar se avisan las **cuentas del export sin fila en el plan de cuentas** (no
 entran en ningún total) y los **códigos repetidos** dentro de SALDOS.
 
-### Códigos repetidos detectados hoy
+### El plan de cuentas se pone al día solo
 
-Los 4 archivos tienen cuentas cargadas dos veces con el texto escrito distinto (un espacio de
-más). Solo una de cada par levanta el importe; la otra queda en cero para siempre. El caso más
-claro es `4230400000 Intereses resarcitorios` en el Acumulado R$: la fila 199 trae 65,43 y la
-208 queda vacía. `4212800000` está repetida en los cuatro archivos. La app los avisa en cada
-corrida pero **no los toca**: cuál de las dos filas sobra es una decisión contable.
+Antes de cualquier otra cosa, cada corrida compara el plan de cuentas de `SALDOS` contra el
+plan oficial del sistema (`plan_oficial.js`): corrige los códigos tipeados con un dígito de
+menos, reasigna las filas que llevaban el código de otra cuenta, y junta las que quedan
+repetidas —repuntando antes lo que las referencie, para no dejar `#REF!`—. Los cuatro archivos
+pasaron de 13 códigos repetidos a ninguno.
+
+Cada cambio se valida contra el plan oficial por código + nombre. Lo que no se puede deducir
+queda a la vista en vez de resolverse a criterio; las definiciones que tomó contaduría están
+en la tabla `UNIFICACIONES` de `limpieza_plan.js`, cada una con su motivo.
 
 ## Lo que la app NO toca (sigue siendo manual)
 
@@ -120,7 +124,13 @@ informe-tfbr/
   app.js            conecta la pantalla con el motor
   parser_tfbr.js    lee el Sumas y Saldos de Onvio (columnas por encabezado, no por posición)
   config_tfbr.js    deduce el layout de SALDOS leyendo las fórmulas del archivo
+  plan_oficial.js   el plan de cuentas oficial, exportado del sistema contable
+  limpieza_plan.js  pone el plan de SALDOS de acuerdo con el oficial
+  repuntes_anexo.js las líneas del Anexo II que leían la cuenta de al lado
   motor_tfbr.js     empareja por código y escribe la zona de pegado
+  periodo_tfbr.js   tipo de cambio y cuadro de diferencia de cambio del Acumulado R$
+  validar_tfbr.js   los controles sobre el archivo ya recalculado por Excel
+  pendientes_tfbr.js el checklist de lo que sigue siendo manual
   fixes_tfbr.js     los arreglos explícitos aprobados
   github_tfbr.js    lee y guarda los maestros y el historial en este repositorio
   formula_hojas.js  reacomoda fórmulas al insertar filas (ExcelJS no lo hace solo)
