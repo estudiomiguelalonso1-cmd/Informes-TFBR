@@ -91,14 +91,17 @@
   <div class="card hidden" id="cardCuentas">
     <h2>Configurar cuentas</h2>
     <p class="footer-note">
-      A qué rótulo del Anexo II va cada cuenta. Lo que se muestra sale de las fórmulas del
-      archivo, no de una lista aparte: son las fórmulas las que deciden dónde cae el importe.
-      Cambiar el rótulo acá reescribe la fórmula — saca la cuenta de donde estaba y la engancha
-      en el nuevo renglón. Nada se sube hasta que aprietes Guardar.
+      A qué rótulo del Anexo II va cada cuenta. Una sola lista para los cuatro balances: tienen
+      que ser iguales, así que el cambio se aplica a los cuatro.
+      <br><br>
+      Lo que se muestra sale de las fórmulas, y ya con lo que el motor aplica en cada corrida
+      (limpieza del plan y unificación de rótulos) — no del archivo crudo guardado en GitHub,
+      que todavía tiene el cableado viejo. Cambiar el rótulo reescribe la fórmula: saca la
+      cuenta del renglón donde estaba y la engancha en el nuevo. Nada se sube hasta que
+      aprietes Guardar.
     </p>
 
     <div class="cfg-barra">
-      <select id="cfgArchivo" onchange="cfgCargarArchivo()"></select>
       <input id="cfgBuscador" type="text" placeholder="Buscar cuenta o rótulo…"
              oninput="cfgBuscar(this.value)">
       <label class="cfg-check">

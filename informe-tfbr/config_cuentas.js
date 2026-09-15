@@ -1,27 +1,30 @@
-// Panel "Configurar cuentas": qué cuenta alimenta cada rótulo del Anexo II, y cómo cambiarlo.
+// Panel "Configurar cuentas": qué rótulo del Anexo II lee cada cuenta, y cómo cambiarlo.
 //
-// Lo importante de cómo funciona: el rótulo que muestra sale de LAS FÓRMULAS del archivo, no
-// de una tabla. Las fórmulas son las que deciden dónde cae el importe; una tabla que dijera
-// otra cosa daría la sensación de estar configurado cuando no lo está. Y cambiar el rótulo acá
-// REESCRIBE la fórmula: saca la cuenta del renglón donde estaba y la engancha en el nuevo.
+// Una sola lista para los cuatro balances. Los cuatro tienen que abrir el gasto con los mismos
+// rótulos y la misma cuenta en cada uno, así que mostrarlos por separado sería mostrar cuatro
+// veces la misma configuración — y un cambio hecho en uno solo los desalinearía, que es
+// justamente lo que se viene arreglando. El cambio se aplica a los cuatro.
 //
-// Por eso también se ven las cuentas que no lee nadie y las que leen dos renglones: son las dos
-// formas en que un importe se pierde o se cuenta doble sin que el balance deje de cerrar.
+// Lo que se muestra sale de LAS FÓRMULAS, no de una tabla: son las fórmulas las que deciden
+// dónde cae el importe. Pero de las fórmulas DESPUÉS de que el motor haga lo suyo, no de las
+// del archivo guardado: el maestro de GitHub todavía tiene el cableado viejo, y la limpieza y
+// la unificación se aplican en cada corrida. Mirando el archivo crudo, el panel denunciaba
+// como problemas cosas que el informe generado ya no tiene.
 //
-// Los cambios se acumulan en memoria sobre una copia del maestro y recién se suben a GitHub al
-// apretar "Guardar". Hasta entonces no se toca nada.
+// Cambiar el rótulo reescribe la fórmula: saca la cuenta del renglón donde estaba y la engancha
+// en el nuevo. Los cambios quedan en memoria y recién se suben al apretar Guardar.
 
 const CFG_ESTADOS = {
-  ok:      { texto: "Configurada",     clase: "ok" },
-  sin:     { texto: "Sin rótulo",      clase: "bad" },
-  varias:  { texto: "En varios",       clase: "bad" },
+  ok:       { texto: "Configurada",          clase: "ok" },
+  sin:      { texto: "Sin rótulo",           clase: "bad" },
+  varias:   { texto: "En varios rótulos",    clase: "bad" },
+  difiere:  { texto: "Distinto entre archivos", clase: "bad" },
 };
 
-let cfgArchivo = null;     // archivoId que se está mirando
-let cfgWb = null;          // copia del maestro sobre la que se edita
-let cfgCambios = [];       // qué se hizo, para el commit y para mostrarlo
+let cfgCopias = null;      // { archivoId: workbook } — copias en memoria, ya preparadas
+let cfgCambios = [];
 let cfgFiltro = "";
-let cfgEditando = null;    // código de la cuenta cuyo rótulo se está eligiendo
+let cfgEditando = null;
 let cfgSoloProblemas = true;
 
 function cfgTexto(ws, r, c) {
@@ -35,8 +38,20 @@ function cfgNorm(t) {
     .toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 }
 
-// El estado de cada cuenta, leyendo las fórmulas del Anexo II.
-function cfgLeerCuentas(wb) {
+// Cómo queda un archivo después de lo que el motor aplica en cada corrida. Es lo que hay que
+// mirar: el maestro guardado todavía no lo tiene.
+function cfgPrepararCopia(wb) {
+  materializarFormulasCompartidas(wb);
+  const limpieza = limpiarPlanDeCuentas(wb, () => {});
+  const layout = derivarLayoutSaldos(wb);
+  const plan = leerPlanDeCuentas(wb, layout).cuentas;
+  aplicarRepuntesAnexo(wb, null, plan, () => {});
+  unificarRotulosAnexo(wb, plan, () => {});
+  return wb;
+}
+
+// El estado de un archivo: qué renglón lee cada cuenta de gasto.
+function cfgEstadoDe(wb) {
   const layout = derivarLayoutSaldos(wb);
   const S = wb.getWorksheet(layout.sheet);
   const ax = wb.getWorksheet("Anexo II");
@@ -44,15 +59,11 @@ function cfgLeerCuentas(wb) {
 
   const porFila = {};
   for (let r = layout.planDeCuentas.desde; r <= layout.planDeCuentas.hasta; r++) {
-    const t = cfgTexto(S, r, layout.keyCol).trim();
-    const m = /^\s*([\d.]+)\s*-?\s*(.*)$/.exec(t);
-    if (!m) continue;
-    porFila[r] = { cod: m[1].replace(/\./g, ""), nom: m[2].trim(), fila: r };
+    const m = /^\s*([\d.]+)\s*-?\s*(.*)$/.exec(cfgTexto(S, r, layout.keyCol).trim());
+    if (m) porFila[r] = { cod: m[1].replace(/\./g, ""), nom: m[2].trim(), fila: r };
   }
 
-  // qué renglón lee cada fila de SALDOS
-  const lectores = {};
-  const rotulos = [];
+  const lectores = {}, rotulos = [];
   for (let r = bloque.desde; r <= bloque.hasta; r++) {
     const rot = cfgTexto(ax, r, 2).trim();
     if (rot) rotulos.push({ fila: r, rotulo: rot });
@@ -66,143 +77,194 @@ function cfgLeerCuentas(wb) {
     }
   }
 
-  const cuentas = [];
+  const porCuenta = {};
   for (const info of Object.values(porFila)) {
-    // Solo las cuentas de GASTO. El Anexo II es la apertura del gasto por centro de costo: una
-    // cuenta de activo, de pasivo o de ingreso no va ahí, y listarlas como "sin rótulo" haría
-    // parecer que faltan trece configuraciones cuando faltan cuatro.
+    // Solo cuentas de GASTO: el Anexo II es la apertura del gasto por centro de costo. Una de
+    // activo, pasivo o ingreso no va ahí, y listarlas haría parecer que falta configurarlas.
     if (!/^42/.test(info.cod)) continue;
     if (!PLAN_CENTROS_COSTO.has(info.cod)) continue;
     const quien = lectores[info.fila] || [];
-    const estado = quien.length === 0 ? "sin" : (quien.length > 1 ? "varias" : "ok");
-    cuentas.push({ ...info, rotulos: quien, estado, saldo: cfgSaldoDe(S, info.fila, layout) });
+    porCuenta[info.cod] = {
+      ...info,
+      saldo: cfgNumero(S, info.fila, layout.deudorCol),
+      rotulos: quien.map(q => q.rotulo || `(fila ${q.fila})`),
+      col: quien.length ? quien[0].col : null,
+    };
   }
-  const orden = { varias: 0, sin: 1, ok: 2 };
-  cuentas.sort((a, b) => (orden[a.estado] - orden[b.estado]) || a.cod.localeCompare(b.cod));
-
-  // Para elegir destino, un rótulo repetido tiene que aparecer UNA vez: algunos archivos traen
-  // el mismo concepto en dos filas (una con cuenta y otra vacía), y un desplegable con el
-  // nombre dos veces no deja saber cuál se está eligiendo. Queda la primera, que es la misma
-  // que usa cfgMoverCuenta.
   const vistos = new Set();
   const paraElegir = rotulos.filter(r => {
     const k = cfgNorm(r.rotulo);
     if (!k || vistos.has(k)) return false;
-    vistos.add(k);
-    return true;
+    vistos.add(k); return true;
   }).sort((a, b) => a.rotulo.localeCompare(b.rotulo, "es"));
 
-  return { cuentas, rotulos: paraElegir, todosLosRotulos: rotulos, layout, bloque };
+  return { porCuenta, rotulos: paraElegir, bloque, layout };
 }
 
-function cfgSaldoDe(ws, fila, layout) {
-  const v = ws.getCell(fila, layout.deudorCol).value;
+function cfgNumero(ws, fila, col) {
+  const v = ws.getCell(fila, col).value;
   if (typeof v === "number") return v;
   if (v && typeof v === "object" && typeof v.result === "number") return v.result;
   return 0;
 }
 
-// Mueve una cuenta al rótulo elegido: la saca de donde esté y la engancha en el nuevo.
-function cfgMoverCuenta(wb, cod, rotuloDestino) {
-  const { cuentas, rotulos, bloque } = cfgLeerCuentas(wb);
-  const cuenta = cuentas.find(c => c.cod === cod);
-  if (!cuenta) throw new Error(`No encontré la cuenta ${cod} en SALDOS.`);
-  const ax = wb.getWorksheet("Anexo II");
-
-  const destino = rotulos.find(r => cfgNorm(r.rotulo) === cfgNorm(rotuloDestino));
-  if (!destino) throw new Error(`No existe el rótulo "${rotuloDestino}" en este archivo.`);
-
-  // la columna de centro de costo: la que ya usaba, o la de administración si no tenía
-  const col = cuenta.rotulos.length ? cuenta.rotulos[0].col : 4;
-
-  // sacarla de todos lados
-  const sacadaDe = [];
-  for (let r = bloque.desde; r <= bloque.hasta; r++) {
-    for (const c of [4, 5, 6]) {
-      const dir = `${String.fromCharCode(64 + c)}${r}`;
-      if (rtQuitarTermino(ax, dir, cuenta.fila)) sacadaDe.push(cfgTexto(ax, r, 2).trim());
-    }
+// Junta los cuatro archivos en una sola vista.
+function cfgVistaUnica() {
+  const estados = {};
+  for (const a of ARCHIVOS_TFBR) {
+    if (cfgCopias[a.id]) estados[a.id] = cfgEstadoDe(cfgCopias[a.id]);
   }
+  const ids = Object.keys(estados);
+  if (!ids.length) return { filas: [], rotulos: [] };
 
-  // engancharla en el nuevo
-  const colImp = bloque.colImporte || "C";
-  const celda = ax.getCell(destino.fila, col);
-  const v = celda.value;
-  const previo = (v && typeof v === "object" && typeof v.formula === "string") ? v.formula : "";
-  celda.value = { formula: previo ? `${previo}+SALDOS!${colImp}${cuenta.fila}`
-                                  : `+SALDOS!${colImp}${cuenta.fila}` };
+  const codigos = new Set();
+  ids.forEach(id => Object.keys(estados[id].porCuenta).forEach(c => codigos.add(c)));
 
-  return { cod, nombre: cuenta.nom, de: sacadaDe, a: destino.rotulo };
+  const filas = [];
+  for (const cod of codigos) {
+    const enCada = ids.map(id => ({ id, c: estados[id].porCuenta[cod] })).filter(x => x.c);
+    const nom = enCada[0].c.nom;
+    const saldos = {};
+    enCada.forEach(x => { saldos[x.id] = x.c.saldo; });
+
+    // el rótulo, visto en cada archivo
+    const porArchivo = {};
+    enCada.forEach(x => { porArchivo[x.id] = x.c.rotulos; });
+    const firmas = new Set(enCada.map(x => x.c.rotulos.map(cfgNorm).sort().join("|")));
+
+    let estado = "ok";
+    const alguno = enCada[0].c.rotulos;
+    if (enCada.some(x => x.c.rotulos.length === 0)) estado = "sin";
+    if (enCada.some(x => x.c.rotulos.length > 1)) estado = "varias";
+    if (firmas.size > 1) estado = "difiere";
+
+    filas.push({
+      cod, nom, estado, porArchivo, saldos,
+      rotulos: alguno,
+      enArchivos: enCada.map(x => x.id),
+      saldoMax: Math.max(...Object.values(saldos).map(Math.abs)),
+    });
+  }
+  const orden = { difiere: 0, varias: 1, sin: 2, ok: 3 };
+  filas.sort((a, b) => (orden[a.estado] - orden[b.estado]) ||
+                       (b.saldoMax - a.saldoMax) || a.cod.localeCompare(b.cod));
+
+  // los rótulos para elegir: los que están en TODOS los archivos
+  const listas = ids.map(id => new Set(estados[id].rotulos.map(r => cfgNorm(r.rotulo))));
+  const rotulos = estados[ids[0]].rotulos
+    .filter(r => listas.every(s => s.has(cfgNorm(r.rotulo))))
+    .map(r => r.rotulo);
+
+  return { filas, rotulos, estados };
+}
+
+// Mueve la cuenta al rótulo elegido, EN LOS CUATRO archivos.
+function cfgMoverEnTodos(cod, rotuloDestino) {
+  const hechos = [];
+  for (const a of ARCHIVOS_TFBR) {
+    const wb = cfgCopias[a.id];
+    if (!wb) continue;
+    const est = cfgEstadoDe(wb);
+    const cuenta = est.porCuenta[cod];
+    if (!cuenta) continue;                       // esa cuenta no está en este archivo
+    const destino = est.rotulos.find(r => cfgNorm(r.rotulo) === cfgNorm(rotuloDestino));
+    if (!destino) continue;
+    const ax = wb.getWorksheet("Anexo II");
+    const col = cuenta.col || 4;
+
+    for (let r = est.bloque.desde; r <= est.bloque.hasta; r++) {
+      for (const c of [4, 5, 6]) rtQuitarTermino(ax, `${String.fromCharCode(64 + c)}${r}`, cuenta.fila);
+    }
+    const colImp = est.bloque.colImporte || "C";
+    const celda = ax.getCell(destino.fila, col);
+    const v = celda.value;
+    const previo = (v && typeof v === "object" && typeof v.formula === "string") ? v.formula : "";
+    celda.value = { formula: previo ? `${previo}+SALDOS!${colImp}${cuenta.fila}`
+                                    : `+SALDOS!${colImp}${cuenta.fila}` };
+    hechos.push(a.id);
+  }
+  return hechos;
 }
 
 // ------------------------------------------------------------------- pantalla
 
 async function abrirConfigCuentas() {
   mostrar("cardCuentas", true);
-  const sel = document.getElementById("cfgArchivo");
-  if (!sel.options.length) {
-    for (const a of ARCHIVOS_TFBR) sel.add(new Option(a.label, a.id));
-  }
-  cfgArchivo = sel.value || ARCHIVOS_TFBR[0].id;
-  sel.value = cfgArchivo;
-  await cfgCargarArchivo();
   document.getElementById("cardCuentas").scrollIntoView({ behavior: "smooth" });
+  if (!cfgCopias) await cfgCargar();
+  else cfgPintar();
 }
 
-async function cfgCargarArchivo() {
-  const sel = document.getElementById("cfgArchivo");
-  cfgArchivo = sel.value;
+async function cfgCargar() {
+  estadoUi("cfgStatus", "Preparando los cuatro archivos…", "");
+  document.getElementById("cfgLista").innerHTML = "";
+  cfgCopias = {};
   cfgCambios = [];
   cfgEditando = null;
-  estadoUi("cfgStatus", "Cargando el maestro…", "");
-  const cargado = App.maestrosCargados[cfgArchivo];
-  if (!cargado) { estadoUi("cfgStatus", "Todavía no está cargado ese maestro.", "bad"); return; }
-  // copia en memoria: lo que se edita acá no toca el maestro hasta guardar
-  const buffer = await cargado.wb.xlsx.writeBuffer();
-  cfgWb = new ExcelJS.Workbook();
-  await cfgWb.xlsx.load(buffer);
-  estadoUi("cfgStatus", "", "");
-  cfgPintar();
+  try {
+    for (const a of ARCHIVOS_TFBR) {
+      const cargado = App.maestrosCargados[a.id];
+      if (!cargado) continue;
+      const buffer = await cargado.wb.xlsx.writeBuffer();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buffer);
+      cfgCopias[a.id] = cfgPrepararCopia(wb);
+    }
+    estadoUi("cfgStatus", "", "");
+    cfgPintar();
+  } catch (e) {
+    estadoUi("cfgStatus", "No pude preparar los archivos: " + e.message, "bad");
+  }
 }
 
 function cfgPintar() {
   const cont = document.getElementById("cfgLista");
-  if (!cfgWb) { cont.innerHTML = ""; return; }
-  const { cuentas, rotulos } = cfgLeerCuentas(cfgWb);
+  if (!cfgCopias) { cont.innerHTML = ""; return; }
+  const { filas, rotulos } = cfgVistaUnica();
 
-  const problemas = cuentas.filter(c => c.estado !== "ok");
+  const cuenta = (e) => filas.filter(f => f.estado === e).length;
+  const problemas = filas.filter(f => f.estado !== "ok").length;
   document.getElementById("cfgResumen").innerHTML =
-    `<b>${cuentas.length}</b> cuentas · <b>${problemas.length}</b> a revisar ` +
-    `(${cuentas.filter(c => c.estado === "varias").length} en varios rótulos, ` +
-    `${cuentas.filter(c => c.estado === "sin").length} sin rótulo)` +
+    `<b>${filas.length}</b> cuentas de gasto, iguales en los 4 balances · ` +
+    (problemas
+      ? `<b>${problemas}</b> a revisar (${cuenta("difiere")} distintas entre archivos, ` +
+        `${cuenta("varias")} en varios rótulos, ${cuenta("sin")} sin rótulo)`
+      : "todas configuradas") +
     (cfgCambios.length ? ` · <b>${cfgCambios.length} cambio(s) sin guardar</b>` : "");
 
   const filtro = cfgNorm(cfgFiltro);
-  const visibles = cuentas.filter(c => {
-    if (cfgSoloProblemas && c.estado === "ok") return false;
+  const visibles = filas.filter(f => {
+    if (cfgSoloProblemas && f.estado === "ok") return false;
     if (!filtro) return true;
-    return cfgNorm(`${c.cod} ${c.nom}`).includes(filtro) ||
-           c.rotulos.some(r => cfgNorm(r.rotulo).includes(filtro));
+    return cfgNorm(`${f.cod} ${f.nom}`).includes(filtro) ||
+           f.rotulos.some(r => cfgNorm(r).includes(filtro));
   });
 
   let html = "<table class='cfg'><thead><tr><th>Cuenta</th><th>Saldo</th>" +
              "<th>Rótulo del Anexo II</th><th></th></tr></thead><tbody>";
-  for (const c of visibles) {
-    const e = CFG_ESTADOS[c.estado];
-    const rots = c.rotulos.length
-      ? c.rotulos.map(r => r.rotulo || `(fila ${r.fila})`).join(" + ")
-      : "—";
+  for (const f of visibles) {
+    const e = CFG_ESTADOS[f.estado];
+    let rots;
+    if (f.estado === "difiere") {
+      rots = ARCHIVOS_TFBR.filter(a => f.porArchivo[a.id])
+        .map(a => `<span class="cfg-nom">${a.label}:</span> ${f.porArchivo[a.id].join(" + ") || "—"}`)
+        .join("<br>");
+    } else {
+      rots = f.rotulos.length ? f.rotulos.join(" + ") : "—";
+    }
+    const saldo = Object.values(f.saldos).find(v => Math.abs(v) > 0.005);
     html += `<tr>` +
-      `<td><span class="mono">${c.cod}</span><br><span class="cfg-nom">${c.nom}</span></td>` +
-      `<td class="mono cfg-saldo">${c.saldo.toFixed(2)}</td>` +
+      `<td><span class="mono">${f.cod}</span><br><span class="cfg-nom">${f.nom}</span></td>` +
+      `<td class="mono cfg-saldo">${(saldo || 0).toFixed(2)}</td>` +
       `<td>${rots}<br><span class="status-msg ${e.clase} cfg-chip">${e.texto}</span></td>` +
-      `<td><button class="cfg-btn" onclick="cfgElegir('${c.cod}')">Cambiar</button></td>` +
+      `<td><button class="cfg-btn" onclick="cfgElegir('${f.cod}')">Cambiar</button></td>` +
       `</tr>`;
-    if (cfgEditando === c.cod) {
-      const opts = rotulos.map(r => `<option value="${r.rotulo.replace(/"/g, "&quot;")}">${r.rotulo}</option>`).join("");
+    if (cfgEditando === f.cod) {
+      const opts = rotulos.map(r =>
+        `<option value="${r.replace(/"/g, "&quot;")}">${r}</option>`).join("");
       html += `<tr class="cfg-editor"><td colspan="4">` +
-        `Mover <b>${c.nom}</b> a: <select id="cfgDestino">${opts}</select> ` +
-        `<button class="cfg-btn" onclick="cfgAplicar('${c.cod}')">Aplicar</button> ` +
+        `Mover <b>${f.nom}</b> a: <select id="cfgDestino">${opts}</select> ` +
+        `<button class="cfg-btn" onclick="cfgAplicar('${f.cod}')">Aplicar a los 4</button> ` +
         `<button class="cfg-btn" onclick="cfgElegir(null)">Cancelar</button>` +
         `</td></tr>`;
     }
@@ -212,10 +274,9 @@ function cfgPintar() {
   cont.innerHTML = html;
 
   document.getElementById("btnGuardarCuentas").disabled = cfgCambios.length === 0;
-  const det = document.getElementById("cfgCambios");
-  det.innerHTML = cfgCambios.length
+  document.getElementById("cfgCambios").innerHTML = cfgCambios.length
     ? "<b>Cambios sin guardar:</b><ul>" + cfgCambios.map(c =>
-        `<li class="footer-note">${c.nombre}: ${c.de.length ? c.de.join(", ") : "(sin rótulo)"} → <b>${c.a}</b></li>`).join("") + "</ul>"
+        `<li class="footer-note">${c.nombre} → <b>${c.a}</b> (${c.archivos} archivo(s))</li>`).join("") + "</ul>"
     : "";
 }
 
@@ -224,10 +285,12 @@ function cfgElegir(cod) { cfgEditando = cod; cfgPintar(); }
 function cfgAplicar(cod) {
   const destino = document.getElementById("cfgDestino").value;
   try {
-    const r = cfgMoverCuenta(cfgWb, cod, destino);
-    cfgCambios.push(r);
+    const { filas } = cfgVistaUnica();
+    const f = filas.find(x => x.cod === cod);
+    const ids = cfgMoverEnTodos(cod, destino);
+    cfgCambios.push({ cod, nombre: f ? f.nom : cod, a: destino, archivos: ids.length });
     cfgEditando = null;
-    estadoUi("cfgStatus", `"${r.nombre}" pasó a "${r.a}".`, "ok");
+    estadoUi("cfgStatus", `"${f ? f.nom : cod}" pasó a "${destino}" en ${ids.length} archivo(s).`, "ok");
     cfgPintar();
   } catch (e) {
     estadoUi("cfgStatus", "No pude moverla: " + e.message, "bad");
@@ -242,16 +305,20 @@ async function guardarConfigCuentas() {
   document.getElementById("btnGuardarCuentas").disabled = true;
   mostrar("spinnerCuentas", true);
   try {
-    const buffer = await cfgWb.xlsx.writeBuffer();
     const detalle = cfgCambios.map(c => `${c.cod} ${c.nombre} → ${c.a}`).join("; ");
-    await ghtGuardarMaestro(cfgArchivo, buffer,
-      `Configurar cuentas de ${cfgArchivo}: ${detalle}`.slice(0, 240));
-    log(`Configuración guardada en ${cfgArchivo}: ${detalle}`);
-    estadoUi("cfgStatus", `Guardado. ${cfgCambios.length} cambio(s).`, "ok");
+    const buffers = {};
+    for (const a of ARCHIVOS_TFBR) {
+      if (cfgCopias[a.id]) buffers[a.id] = await cfgCopias[a.id].xlsx.writeBuffer();
+    }
+    for (const [id, buf] of Object.entries(buffers)) {
+      await ghtGuardarMaestro(id, buf, `Configurar cuentas: ${detalle}`.slice(0, 240));
+      log(`Configuración guardada en ${id}`);
+    }
+    estadoUi("cfgStatus", `Guardado en los 4. ${cfgCambios.length} cambio(s).`, "ok");
     cfgCambios = [];
-    // el maestro en memoria quedó viejo: se vuelve a leer de GitHub
     await revisarMaestrosExistentes();
-    await cfgCargarArchivo();
+    cfgCopias = null;
+    await cfgCargar();
   } catch (e) {
     estadoUi("cfgStatus", "No pude guardar: " + e.message, "bad");
     document.getElementById("btnGuardarCuentas").disabled = false;
@@ -261,5 +328,5 @@ async function guardarConfigCuentas() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { cfgLeerCuentas, cfgMoverCuenta, cfgNorm };
+  module.exports = { cfgEstadoDe, cfgPrepararCopia, cfgNorm };
 }

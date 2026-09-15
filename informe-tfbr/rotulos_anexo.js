@@ -55,6 +55,19 @@ function rtUbicarBloque(ax) {
       if (!colImporte) colImporte = m[1];        // la columna de SALDOS que leen los renglones
     }
   }
+  // El bloque llega hasta la última fila CON RÓTULO antes del total, no hasta la última que
+  // lee una cuenta. Los renglones que todavía no tienen cuenta asignada están al final —
+  // recién creados, esperando que se les asigne una— y si quedaran fuera del bloque nadie los
+  // encontraría: la asignación crearía un duplicado en vez de usar el que ya está.
+  if (rangoTotal) {
+    for (let r = rangoTotal.hasta; r > (hasta || 0); r--) {
+      const t = ax.getCell(r, 2).value;
+      const texto = (t && typeof t === "object")
+        ? (t.richText ? t.richText.map(x => x.text).join("") : "")
+        : (t == null ? "" : String(t));
+      if (texto.trim() && !/^total|^conceptos/i.test(texto.trim())) { hasta = r; break; }
+    }
+  }
   return { desde, hasta, total, rangoTotal, colImporte };
 }
 
