@@ -32,10 +32,14 @@ function log(msg) {
   console.log(msg);
 }
 
+// Sin texto no hay mensaje: limpiar es limpiar. Antes dejaba el recuadro gris vacío —
+// una barra sin contenido flotando debajo de los botones.
 function estadoUi(elId, texto, clase) {
   const el = document.getElementById(elId);
   if (!el) return;
-  el.innerHTML = `<div class="status-msg ${clase || ""}">${texto}</div>`;
+  el.innerHTML = texto
+    ? `<div class="status-msg ${clase || ""}">${texto}</div>`
+    : "";
 }
 
 // ------------------------------------------------------------ arranque / config
