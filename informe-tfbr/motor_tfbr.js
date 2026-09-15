@@ -110,6 +110,10 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // cuenta quedó, no donde estaba.
   const repuntes = aplicarRepuntesAnexo(wb, archivoId, planDeCuentas, log);
 
+  // Rótulos que este archivo no tiene y los otros sí. Va después del repunte: el repunte libera
+  // la cuenta del renglón ajeno, y esto le da el suyo.
+  const rotulos = agregarRotulosAnexo(wb, archivoId, layout, planDeCuentas, log);
+
   const { matcheadas, sinMapear, escritas } = emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo);
 
   escribirStaging(wb, layout, matcheadas, log);
@@ -161,6 +165,8 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
         sinExplicar: limpieza.sinExplicar, ambiguos: limpieza.ambiguos,
       },
       repuntesAnexo: repuntes.hechos,
+      rotulosAgregados: rotulos.agregados,
+      rotulosSalteados: rotulos.salteados,
       repuntesSalteados: repuntes.salteados,
       altas,
       sinEnganchar: sinEnganchar.map(a => ({ codigo: a.codigo, clave: a.clave })),
@@ -182,5 +188,6 @@ if (typeof module !== "undefined") {
   global.repuntarGemela = ic.repuntarGemela;
   global.aplicarRepuntesAnexo = require("./repuntes_anexo.js").aplicarRepuntesAnexo;
   global.limpiarPlanDeCuentas = require("./limpieza_plan.js").limpiarPlanDeCuentas;
+  global.agregarRotulosAnexo = require("./rotulos_anexo.js").agregarRotulosAnexo;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }
