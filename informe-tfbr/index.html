@@ -83,30 +83,6 @@
   </div>
 
 
-  <!-- ---------- configurar cuentas ---------- -->
-  <div class="card hidden" id="cardCuentas">
-    <div class="cfg-head">
-      <h2>Configurar cuentas</h2>
-      <div id="cfgResumen" class="cfg-resumen"></div>
-    </div>
-
-    <div class="cfg-barra">
-      <input id="cfgBuscador" type="text" placeholder="Buscar cuenta o rótulo…"
-             oninput="cfgBuscar(this.value)">
-      <label class="cfg-check">
-        <input type="checkbox" onchange="cfgVerTodas(this.checked)"> Ver todas
-      </label>
-    </div>
-    <div id="cfgLista"></div>
-    <div id="cfgCambios"></div>
-
-    <div style="margin-top:14px;">
-      <button id="btnGuardarCuentas" disabled onclick="guardarConfigCuentas()">Guardar cambios</button>
-      <span class="spinner hidden" id="spinnerCuentas">Guardando…</span>
-    </div>
-    <div id="cfgStatus"></div>
-  </div>
-
   <!-- ---------- carga del período ---------- -->
   <div class="card hidden" id="cardExport">
     <h2>Cargar el período</h2>
@@ -173,6 +149,41 @@
   <div class="card hidden" id="cardLog">
     <h2>Registro</h2>
     <div class="log" id="logTexto"></div>
+  </div>
+
+  <!-- ---------- configurar cuentas (ventana) ---------- -->
+  <!-- Va fuera del flujo de las cards a propósito: abrirlo no tiene que alargar la página ni
+       obligar a bajar hasta el fondo. Se abre encima, se cierra, y lo cargado queda en memoria. -->
+  <div class="modal-overlay hidden" id="ovCuentas" onclick="cfgFondo(event)">
+    <div class="modal modal-ancho" role="dialog" aria-modal="true" aria-labelledby="cfgTitulo">
+      <div class="cfg-head">
+        <h2 id="cfgTitulo">Configurar cuentas</h2>
+        <div class="cfg-head-der">
+          <div id="cfgResumen" class="cfg-resumen"></div>
+          <button class="cfg-cerrar" onclick="cerrarConfigCuentas()" aria-label="Cerrar">&times;</button>
+        </div>
+      </div>
+
+      <div class="cfg-barra">
+        <input id="cfgBuscador" type="text" placeholder="Buscar cuenta o rótulo…"
+               oninput="cfgBuscar(this.value)">
+        <label class="cfg-check">
+          <input type="checkbox" id="cfgVerTodas" onchange="cfgVerTodas(this.checked)"> Ver todas
+        </label>
+      </div>
+
+      <div id="cfgLista" class="cfg-scroll"></div>
+
+      <div class="cfg-pie">
+        <div id="cfgCambios"></div>
+        <div id="cfgStatus"></div>
+        <div class="cfg-pie-acciones">
+          <button id="btnGuardarCuentas" disabled onclick="guardarConfigCuentas()">Guardar cambios</button>
+          <button class="secondary" onclick="cerrarConfigCuentas()">Cerrar</button>
+          <span class="spinner hidden" id="spinnerCuentas">Guardando…</span>
+        </div>
+      </div>
+    </div>
   </div>
 
 </div>

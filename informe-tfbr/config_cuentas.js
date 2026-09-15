@@ -188,12 +188,34 @@ function cfgMoverEnTodos(cod, rotuloDestino) {
 
 // ------------------------------------------------------------------- pantalla
 
+// Se abre como ventana encima de la página, no como una card más: la lista es larga y
+// desplegarla en el flujo obligaba a bajar hasta el fondo para volver al cierre. Al cerrarla,
+// las copias preparadas y los cambios sin guardar quedan en memoria — reabrirla es instantáneo
+// y no se pierde nada.
 async function abrirConfigCuentas() {
-  mostrar("cardCuentas", true);
-  document.getElementById("cardCuentas").scrollIntoView({ behavior: "smooth" });
+  mostrar("ovCuentas", true);
+  document.body.classList.add("sin-scroll");
+  const b = document.getElementById("cfgBuscador");
+  if (b) setTimeout(() => b.focus(), 0);
   if (!cfgCopias) await cfgCargar();
   else cfgPintar();
 }
+
+function cerrarConfigCuentas() {
+  mostrar("ovCuentas", false);
+  document.body.classList.remove("sin-scroll");
+}
+
+// Click en el fondo (no en la ventana) = cerrar.
+function cfgFondo(ev) {
+  if (ev.target && ev.target.id === "ovCuentas") cerrarConfigCuentas();
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  const ov = document.getElementById("ovCuentas");
+  if (ov && !ov.classList.contains("hidden")) cerrarConfigCuentas();
+});
 
 async function cfgCargar() {
   estadoUi("cfgStatus", "Preparando los cuatro archivos…", "");
@@ -237,15 +259,20 @@ function cfgPintar() {
   if (cfgCambios.length) partes.push(`<b>${cfgCambios.length} sin guardar</b>`);
   document.getElementById("cfgResumen").innerHTML = partes.join(" · ");
 
+  // Buscar mira SIEMPRE las 90 cuentas, esté o no tildado "Ver todas". Con el filtro de
+  // problemas por delante, buscar "sueldos" con todo configurado no devolvía nada: la cuenta
+  // existía pero estaba descartada antes de comparar el texto, y parecía que el buscador
+  // estaba roto.
   const filtro = cfgNorm(cfgFiltro);
   const visibles = filas.filter(f => {
-    if (cfgSoloProblemas && f.estado === "ok") return false;
-    if (!filtro) return true;
-    return cfgNorm(`${f.cod} ${f.nom}`).includes(filtro) ||
-           f.rotulos.some(r => cfgNorm(r).includes(filtro));
+    if (filtro) {
+      return cfgNorm(`${f.cod} ${f.nom}`).includes(filtro) ||
+             f.rotulos.some(r => cfgNorm(r).includes(filtro));
+    }
+    return !(cfgSoloProblemas && f.estado === "ok");
   });
 
-  let html = "<table class='cfg'><thead><tr><th>Cuenta</th><th>Saldo</th>" +
+  let html = "<table class='cfg'><thead><tr><th>Cuenta</th>" +
              "<th>Rótulo del Anexo II</th><th></th></tr></thead><tbody>";
   for (const f of visibles) {
     const e = CFG_ESTADOS[f.estado];
@@ -260,17 +287,15 @@ function cfgPintar() {
       rots = `<span class="cfg-rot">${f.rotulos.length ? f.rotulos.join(" + ") : "—"}` +
              `${f.estado === "ok" ? "" : chip}</span>`;
     }
-    const saldo = Object.values(f.saldos).find(v => Math.abs(v) > 0.005) || 0;
     html += `<tr>` +
       `<td><span class="mono">${f.cod}</span><span class="cfg-nom">${f.nom}</span></td>` +
-      `<td class="mono cfg-saldo">${saldo.toFixed(2)}</td>` +
       `<td>${rots}</td>` +
       `<td><button class="cfg-btn" onclick="cfgElegir('${f.cod}')">Cambiar</button></td>` +
       `</tr>`;
     if (cfgEditando === f.cod) {
       const opts = rotulos.map(r =>
         `<option value="${r.replace(/"/g, "&quot;")}">${r}</option>`).join("");
-      html += `<tr class="cfg-editor"><td colspan="4">` +
+      html += `<tr class="cfg-editor"><td colspan="3">` +
         `Mover <b>${f.nom}</b> a: <select id="cfgDestino">${opts}</select> ` +
         `<button class="cfg-btn" onclick="cfgAplicar('${f.cod}')">Aplicar a los 4</button> ` +
         `<button class="cfg-btn" onclick="cfgElegir(null)">Cancelar</button>` +
@@ -279,9 +304,9 @@ function cfgPintar() {
   }
   html += "</tbody></table>";
   if (!visibles.length) {
-    html = `<div class="cfg-vacio">${cfgSoloProblemas && !cfgFiltro
-      ? "Todas las cuentas están configuradas. Marcá «Ver todas» para revisarlas."
-      : "Ninguna cuenta coincide con la búsqueda."}</div>`;
+    html = `<div class="cfg-vacio">${cfgFiltro
+      ? `Ninguna de las ${filas.length} cuentas coincide con «${cfgFiltro}».`
+      : "Todas las cuentas están configuradas. Marcá «Ver todas» para revisarlas."}</div>`;
   }
   cont.innerHTML = html;
 
