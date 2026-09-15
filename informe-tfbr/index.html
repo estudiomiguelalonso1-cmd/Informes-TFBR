@@ -19,6 +19,7 @@
       </p>
     </div>
     <div>
+      <button class="secondary" onclick="abrirConfigCuentas()">Configurar cuentas</button>
       <button class="secondary" onclick="abrirConfig()">⚙ Configuración de GitHub</button>
       <button class="secondary" onclick="mostrarHistorial()">Historial</button>
     </div>
@@ -83,6 +84,37 @@
       <span class="spinner hidden" id="spinnerAlta">Guardando…</span>
     </div>
     <div id="altaStatus"></div>
+  </div>
+
+
+  <!-- ---------- configurar cuentas ---------- -->
+  <div class="card hidden" id="cardCuentas">
+    <h2>Configurar cuentas</h2>
+    <p class="footer-note">
+      A qué rótulo del Anexo II va cada cuenta. Lo que se muestra sale de las fórmulas del
+      archivo, no de una lista aparte: son las fórmulas las que deciden dónde cae el importe.
+      Cambiar el rótulo acá reescribe la fórmula — saca la cuenta de donde estaba y la engancha
+      en el nuevo renglón. Nada se sube hasta que aprietes Guardar.
+    </p>
+
+    <div class="cfg-barra">
+      <select id="cfgArchivo" onchange="cfgCargarArchivo()"></select>
+      <input id="cfgBuscador" type="text" placeholder="Buscar cuenta o rótulo…"
+             oninput="cfgBuscar(this.value)">
+      <label class="cfg-check">
+        <input type="checkbox" onchange="cfgVerTodas(this.checked)"> ver todas
+      </label>
+    </div>
+
+    <div id="cfgResumen" class="footer-note"></div>
+    <div id="cfgLista"></div>
+    <div id="cfgCambios"></div>
+
+    <div style="margin-top:14px;">
+      <button id="btnGuardarCuentas" disabled onclick="guardarConfigCuentas()">Guardar cambios</button>
+      <span class="spinner hidden" id="spinnerCuentas">Guardando…</span>
+    </div>
+    <div id="cfgStatus"></div>
   </div>
 
   <!-- ---------- carga del período ---------- -->
@@ -161,6 +193,7 @@
 <script src="formula_hojas.js"></script>
 <script src="parser_tfbr.js"></script>
 <script src="config_tfbr.js"></script>
+<script src="config_cuentas.js"></script>
 <script src="duplicados_tfbr.js"></script>
 <script src="insertar_cuenta.js"></script>
 <script src="plan_oficial.js"></script>
