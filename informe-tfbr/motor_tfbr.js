@@ -114,6 +114,10 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // la cuenta del renglón ajeno, y esto le da el suyo.
   const rotulos = agregarRotulosAnexo(wb, archivoId, layout, planDeCuentas, log);
 
+  // Los cuatro archivos con los mismos rótulos, tomando el Mensual $ como modelo, y cada
+  // cuenta leída por un solo renglón.
+  const unificacion = unificarRotulosAnexo(wb, planDeCuentas, log);
+
   const { matcheadas, sinMapear, escritas } = emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo);
 
   escribirStaging(wb, layout, matcheadas, log);
@@ -166,6 +170,7 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       },
       repuntesAnexo: repuntes.hechos,
       rotulosAgregados: rotulos.agregados,
+      rotulosUnificados: unificacion,
       rotulosSalteados: rotulos.salteados,
       repuntesSalteados: repuntes.salteados,
       altas,
@@ -189,5 +194,6 @@ if (typeof module !== "undefined") {
   global.aplicarRepuntesAnexo = require("./repuntes_anexo.js").aplicarRepuntesAnexo;
   global.limpiarPlanDeCuentas = require("./limpieza_plan.js").limpiarPlanDeCuentas;
   global.agregarRotulosAnexo = require("./rotulos_anexo.js").agregarRotulosAnexo;
+  global.unificarRotulosAnexo = require("./rotulos_unificados.js").unificarRotulosAnexo;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }
