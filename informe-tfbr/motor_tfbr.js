@@ -21,7 +21,7 @@ function emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo) {
   for (const c of cuentasExport) {
     const enPlan = planDeCuentas[c.codigo];
     if (!enPlan) { sinMapear.push(c); continue; }
-    matcheadas.push({ texto: enPlan.texto, saldo: c[campoSaldo] });
+    matcheadas.push({ codigo: c.codigo, texto: enPlan.texto, saldo: c[campoSaldo] });
     escritas[c.codigo] = c[campoSaldo];
   }
   return { matcheadas, sinMapear, escritas };
@@ -47,8 +47,11 @@ function escribirStaging(wb, layout, matcheadas, log = () => {}) {
     ws.getCell(r, colDesde).value = null;
     ws.getCell(r, colDesde + 1).value = null;
   }
+  // Se escribe el NÚMERO DE CUENTA, no el texto: es lo que busca la fórmula de cada fila
+  // (ver migrarClaveANumero). Con el texto completo, renombrar una cuenta dejaba la fila en
+  // cero hasta que el motor volviera a escribir el staging.
   matcheadas.forEach((m, i) => {
-    ws.getCell(filaDesde + i, colDesde).value = m.texto;
+    ws.getCell(filaDesde + i, colDesde).value = m.codigo;
     ws.getCell(filaDesde + i, colDesde + 1).value = m.saldo;
   });
 

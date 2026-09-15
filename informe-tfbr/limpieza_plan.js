@@ -97,6 +97,44 @@ function lpCodigoCorregido(codigo, nombre, plan) {
   return candidatos.size === 1 ? [...candidatos][0] : null;
 }
 
+// Pasa las fórmulas de saldo a buscar por NÚMERO DE CUENTA en vez de por el texto completo.
+//
+// Con la forma vieja la clave del BUSCARV era "1110100330  FONDO FIJO BS. AS.", así que la
+// fila solo encontraba su importe si el texto coincidía carácter por carácter con lo que el
+// motor había escrito en la zona de pegado. Funcionaba porque el motor escribía justamente ese
+// texto — pero si alguien abría el maestro y renombraba una cuenta a mano, el plan decía una
+// cosa y la zona de pegado otra, y esa fila quedaba en cero hasta la corrida siguiente.
+//
+// Lo único que identifica a una cuenta es su número. Con la forma nueva la fila extrae de su
+// propia celda lo que hay antes del primer espacio y busca eso, así que el nombre pasa a ser
+// una etiqueta: cambiarlo no mueve ningún importe.
+//
+// Es idempotente y se aplica sola: un maestro con la fórmula vieja queda actualizado en la
+// primera corrida, sin migración aparte.
+function migrarClaveANumero(wb, layout, log = () => {}) {
+  const ws = wb.getWorksheet(layout.sheet);
+  const { colDesde, filaDesde, colHasta, filaHasta } = layout.stagingRange;
+  const staging = `$${ctColNumeroALetra(colDesde)}$${filaDesde}:$${ctColNumeroALetra(colHasta)}$${filaHasta}`;
+  const keyColLetra = ctColNumeroALetra(layout.keyCol);
+  let migradas = 0;
+  for (let r = layout.planDeCuentas.desde; r <= layout.planDeCuentas.hasta; r++) {
+    const celda = ws.getCell(r, layout.saldoCol);
+    const v = celda.value;
+    if (!v || typeof v !== "object" || typeof v.formula !== "string") continue;
+    if (!/VLOOKUP\(/i.test(v.formula)) continue;
+    if (/FIND\(/i.test(v.formula)) continue;                 // ya está migrada
+    const leida = ctLeerVlookup(v.formula);
+    if (!leida || leida.keyFila !== r) continue;
+    // se conserva el rango que la fila ya tenía: hay filas con el rango más largo de la cuenta
+    // y no es asunto de esta migración tocarlo
+    const rangoPropio = `$${leida.stagDesdeCol}$${leida.stagDesdeFila}:$${leida.stagHastaCol}$${leida.stagHastaFila}`;
+    celda.value = { formula: ctFormulaSaldo(leida.keyCol || keyColLetra, r, rangoPropio) };
+    migradas++;
+  }
+  if (migradas) log(`  ${migradas} fórmula(s) de saldo pasadas a buscar por número de cuenta.`);
+  return { migradas, staging };
+}
+
 // Filas que son la MISMA cuenta del plan escrita de otra forma, y que los pasos automáticos
 // no pueden deducir porque ni el código ni el nombre coinciden con nada. Cada una es una
 // definición de contaduría, no una regla.
@@ -264,6 +302,8 @@ function fusionarDuplicados(wb, layout, planDeCuentas, log = () => {}) {
 // Corre los dos pasos. Devuelve todo lo que hizo y lo que no pudo, para mostrarlo en pantalla.
 function limpiarPlanDeCuentas(wb, log = () => {}) {
   let layout = derivarLayoutSaldos(wb);
+  // La migración de la clave va primero de todo: cambia cómo cada fila encuentra su importe.
+  const migracion = migrarClaveANumero(wb, layout, log);
   // Las unificaciones definidas van primero: dejan la fila igual que su par para que el paso
   // de fusión las junte sola.
   const paso0 = aplicarUnificaciones(wb, layout, PLAN_OFICIAL, log);
@@ -286,7 +326,7 @@ function limpiarPlanDeCuentas(wb, log = () => {}) {
   const faltantes = [];
   for (const cod of PLAN_CENTROS_COSTO) if (!cuentas[cod]) faltantes.push(cod);
 
-  return { ...paso0, ...paso1, ...paso1b, ...paso2, faltantesConCentroCosto: faltantes, layout, cuentas };
+  return { migradas: migracion.migradas, ...paso0, ...paso1, ...paso1b, ...paso2, faltantesConCentroCosto: faltantes, layout, cuentas };
 }
 
 if (typeof module !== "undefined") {
@@ -301,8 +341,11 @@ if (typeof module !== "undefined") {
   global.repuntarGemela = ic.repuntarGemela;
   global.PLAN_OFICIAL = po.PLAN_OFICIAL;
   global.PLAN_CENTROS_COSTO = po.PLAN_CENTROS_COSTO;
+  global.ctColNumeroALetra = cfg.ctColNumeroALetra;
+  global.ctLeerVlookup = cfg.ctLeerVlookup;
+  global.ctFormulaSaldo = cfg.ctFormulaSaldo;
   module.exports = {
-    limpiarPlanDeCuentas, aplicarUnificaciones, arreglarCodigos, reasignarPorNombre,
+    limpiarPlanDeCuentas, migrarClaveANumero, aplicarUnificaciones, arreglarCodigos, reasignarPorNombre,
     fusionarDuplicados, UNIFICACIONES,
     lpCodigoCorregido, lpCodigoPorNombre, lpMismoNombre, lpMismoNombreLaxo,
     lpNombreDe, lpCodigoDe, lpNormaliza,

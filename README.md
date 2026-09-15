@@ -14,6 +14,9 @@ Cada balance **se calcula solo**. La hoja `SALDOS` tiene el plan de cuentas comp
 fila trae su saldo con un `BUSCARV` contra la zona de pegado que está más abajo en esa misma
 hoja. De `SALDOS` salen EESP, EERR, EEPN, Activo, Pasivo, Anexo I y Anexo II.
 
+La búsqueda es **por número de cuenta**: cada fila extrae de su propia celda lo que hay antes
+del primer espacio, y busca eso. El nombre es una etiqueta — cambiarlo no mueve ningún importe.
+
 Por eso el motor escribe **únicamente en la zona de pegado**. Todo lo demás lo resuelve
 Excel con las fórmulas que el archivo ya tiene, al abrirlo. Escribir importes a mano en los
 estados pisaría esas fórmulas.
@@ -62,9 +65,8 @@ controlar nada.
 
 - **Cada cuenta pegada se levantó en SALDOS** (bloquea el cierre). Compara cuenta por cuenta
   lo que se pegó contra lo que quedó en la hoja. Es el control que no existe en el proceso
-  manual: si el texto de una cuenta no coincide exactamente, el `BUSCARV` no la encuentra, el
-  `IFERROR` la deja en cero y **el balance cierra igual** — la cuenta desaparece sin que nada
-  avise.
+  manual: si una fila no encuentra su número en la zona de pegado, el `IFERROR` la deja en cero
+  y **el balance cierra igual** — la cuenta desaparece sin que nada avise.
 - **Debe = Haber** (informativo). En los archivos en pesos da cero. En los de reales queda un
   descuadre igual a la diferencia de cambio del período, así que se informa el importe en vez
   de frenar el cierre.

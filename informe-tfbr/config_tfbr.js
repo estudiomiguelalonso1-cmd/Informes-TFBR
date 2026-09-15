@@ -12,7 +12,44 @@
 //   Saldo   = IFERROR(VLOOKUP(<keyCol><fila>, <staging_range>, 2, FALSE), 0)
 // y el rango de staging (`<staging_range>`) es el segundo argumento del VLOOKUP.
 
-const CT_RE_VLOOKUP = /VLOOKUP\(\s*\$?([A-Z]{1,3})\$?(\d+)\s*,\s*\$([A-Z]{1,3})\$(\d+):\$([A-Z]{1,3})\$(\d+)\s*,\s*2\s*,\s*(?:FALSE|0)\s*\)/i;
+// El VLOOKUP se busca en dos formas, porque conviven:
+//
+//   vieja:  VLOOKUP(B10, $A$235:$B$357, 2, FALSE)
+//   nueva:  VLOOKUP(LEFT(B10,FIND(" ",B10&" ")-1), $A$235:$B$357, 2, FALSE)
+//
+// La nueva busca por NÚMERO DE CUENTA: extrae de la propia celda lo que hay antes del primer
+// espacio. Con la vieja la clave era el texto completo ("1110100330  FONDO FIJO BS. AS."), así
+// que renombrar una cuenta a mano dejaba la fila en cero hasta la corrida siguiente, cuando el
+// motor reescribía el staging con el texto nuevo.
+//
+// Como el primer argumento de la forma nueva lleva comas y paréntesis propios, no se puede
+// sacar todo con una sola expresión: se ubica el rango (que siempre termina en ",2,FALSE)") y
+// después la primera celda suelta que aparece antes.
+const CT_RE_VLOOKUP = /VLOOKUP\(/i;
+const CT_RE_VL_RANGO = /\$([A-Z]{1,3})\$(\d+):\$([A-Z]{1,3})\$(\d+)\s*,\s*2\s*,\s*(?:FALSE|0)\s*\)/i;
+const CT_RE_VL_CLAVE = /\$?([A-Z]{1,3})\$?(\d+)/;
+
+// Devuelve {keyCol, keyFila, staging} de una fórmula de saldo, o null si no es una.
+function ctLeerVlookup(formula) {
+  if (!CT_RE_VLOOKUP.test(formula)) return null;
+  const mr = CT_RE_VL_RANGO.exec(formula);
+  if (!mr) return null;
+  // la clave está entre "VLOOKUP(" y el comienzo del rango
+  const desde = formula.toUpperCase().indexOf("VLOOKUP(") + 8;
+  const mc = CT_RE_VL_CLAVE.exec(formula.slice(desde, mr.index));
+  if (!mc) return null;
+  return {
+    keyCol: mc[1], keyFila: parseInt(mc[2], 10),
+    stagDesdeCol: mr[1], stagDesdeFila: parseInt(mr[2], 10),
+    stagHastaCol: mr[3], stagHastaFila: parseInt(mr[4], 10),
+  };
+}
+
+// La fórmula de saldo para una fila, buscando por número de cuenta.
+function ctFormulaSaldo(keyCol, fila, staging) {
+  const clave = `LEFT(${keyCol}${fila},FIND(" ",${keyCol}${fila}&" ")-1)`;
+  return `IFERROR(VLOOKUP(${clave},${staging},2,FALSE),0)`;
+}
 const CT_RE_IF_POS = /^IF\(\$?([A-Z]{1,3})\$?(\d+)\s*>\s*0\s*,/i;
 const CT_RE_IF_NEG = /^IF\(\$?([A-Z]{1,3})\$?(\d+)\s*<\s*0\s*,/i;
 const CT_RE_CUENTA = /^\s*(\d{6,})/;
@@ -49,17 +86,16 @@ function ctEncontrarPatronVlookup(ws) {
     for (let c = 1; c <= Math.min(ws.columnCount, 15); c++) {
       const f = ctFormulaDe(ws, r, c);
       if (!f) continue;
-      const m = CT_RE_VLOOKUP.exec(f);
+      const m = ctLeerVlookup(f);
       if (!m) continue;
-      const [, keyColRef, keyFilaRef, stagDesdeCol, stagDesdeFila, stagHastaCol, stagHastaFila] = m;
-      if (parseInt(keyFilaRef, 10) !== r) continue; // el VLOOKUP de una fila de cuenta se busca a si misma
+      if (m.keyFila !== r) continue; // el VLOOKUP de una fila de cuenta se busca a si misma
       return {
         filaEjemplo: r,
         saldoCol: c,
-        keyCol: ctColLetraANumero(keyColRef),
+        keyCol: ctColLetraANumero(m.keyCol),
         stagingRange: {
-          colDesde: ctColLetraANumero(stagDesdeCol), filaDesde: parseInt(stagDesdeFila, 10),
-          colHasta: ctColLetraANumero(stagHastaCol), filaHasta: parseInt(stagHastaFila, 10),
+          colDesde: ctColLetraANumero(m.stagDesdeCol), filaDesde: m.stagDesdeFila,
+          colHasta: ctColLetraANumero(m.stagHastaCol), filaHasta: m.stagHastaFila,
         },
       };
     }
@@ -177,7 +213,7 @@ function ctColSaldoDeFila(ws, fila, layout) {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    derivarLayoutSaldos, leerPlanDeCuentas,
+    derivarLayoutSaldos, leerPlanDeCuentas, ctLeerVlookup, ctFormulaSaldo,
     ctColLetraANumero, ctColNumeroALetra,
   };
 }
