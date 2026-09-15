@@ -42,6 +42,18 @@ const RENOMBRAR_ROTULOS = [
   { a: "IMP. A LOS DÉBITOS Y CRÉDITOS",             de: ["Imp. A los créditos", "Imp. A los débitos", "Imp. A los débitos y créditos"] },
   // Los Acumulados las tenían juntas; el modelo las tiene separadas.
   { a: "Tasas AFIP",                                de: ["Tasas IGJ, AFIP"] },
+
+  // Sinónimos entre archivos. En cada par queda el nombre del Mensual $, que es el modelo.
+  { a: "Mensajería",                                de: ["Mensajería y trámites"] },
+  { a: "Seguridad",                                 de: ["Seguridad y vigilancia"] },
+  { a: "Alquiler cochera",                          de: ["Alquiler de cochera"] },
+  { a: "Gastos Capacitación",                       de: ["Capacitación"] },
+  { a: "Gastos PC",                                 de: ["Gastos Computación"] },
+  { a: "Impuestos al cheque",                       de: ["imp. Al cheque"] },
+  { a: "Mantenimiento de flota",                    de: ["Mantenimiento y lav. de flota"] },
+  { a: "Gastos de logística",                       de: ["Logística"] },
+  { a: "Telefonos",                                 de: ["Gastos Telefonico", "Gastos Telefonía"] },
+  { a: "Bs Personales Acc. Y Participacion",        de: ["Imp. Bienes Acc. Y Part. Soc.", "Imp. Bienes Sociedades"] },
 ];
 
 // cuenta -> rótulo + centro de costo (D administración, E comercialización, F financieros).
@@ -135,6 +147,111 @@ const CUENTA_DE_ROTULO = [
   { cod: "4231000000", cc: "F", rotulo: "R.E.C.P.A.M."                              },
   { cod: "4231200000", cc: "F", rotulo: "Gastos y comisiones bancarias"             },
   { cod: "4240100000", cc: "E", rotulo: "Combustible"                               },];
+
+// Los 99 rótulos que tienen que estar en los CUATRO archivos. Es la unión de lo que cada uno
+// traía, ya con los sinónimos unificados. Los que un archivo no usa quedan en cero: no molestan
+// y están listos para que se les asigne una cuenta desde la configuración.
+const ROTULOS_COMUNES = [
+  "Acuerdo Seclo",
+  "Adelanto Viaje",
+  "Alquiler de autos",
+  "Alquiler cochera",
+  "Alquiler dpto.",
+  "Alquiler fotocopiadora",
+  "Alquiler Oficina Móvil",
+  "Amortizaciones",
+  "Almuerzos",
+  "Autónomos Directores",
+  "Agua",
+  "Ajuste saldo proveedores",
+  "Bs Personales Acc. Y Participacion",
+  "Sueldos",
+  "Cargas Sociales",
+  "Salario Complementario del Decreto 332/20",
+  "Cesión de Derechos",
+  "Comisiones",
+  "Gastos varios clientes",
+  "Verificación Técnica Vehicular",
+  "Accidentes",
+  "Telefonos",
+  "Librería",
+  "Leasing",
+  "Viaticos",
+  "Reparaciones de flota",
+  "Catering",
+  "CNRT",
+  "Gastos bancarios",
+  "Intereses",
+  "Combustible",
+  "Comunicaciones",
+  "Correo",
+  "Custodia",
+  "Despachantes",
+  "Donaciones",
+  "Publicidad",
+  "Estadía",
+  "Estacionamiento",
+  "Estibajes",
+  "Embargo radicación vehicular",
+  "Fletes",
+  "Gastos Capacitación",
+  "Gastos Medicos",
+  "Gastos de Representación",
+  "Gastos Generales",
+  "Gastos de instalación",
+  "Ropa de trabajo",
+  "Gastos trámites",
+  "Gastos PC",
+  "Gastos varios",
+  "Gastos varios personal",
+  "Gastos y comisiones bancarias",
+  "Gastos Obra Social",
+  "Gastos Hotelería",
+  "Gastos Gestoria",
+  "Habilitaciones",
+  "Honorarios directores",
+  "Honorarios profesionales",
+  "Honorarios Legales",
+  "IMP. A LOS DÉBITOS Y CRÉDITOS",
+  "Intereses resarcitorios",
+  "Impuestos varios",
+  "Impuestos al cheque",
+  "Juicios",
+  "Indemnizaciones",
+  "Legalizaciones",
+  "Locomoción",
+  "Gastos de logística",
+  "Mantenimiento",
+  "Mantenimiento de flota",
+  "Mantenimiento de maquinas",
+  "Mensajería",
+  "Medicina Laboral",
+  "Molilidad y viáticos",
+  "Multas",
+  "Patentes",
+  "Peajes",
+  "Reparaciones",
+  "Refrigerios",
+  "Seguros",
+  "Seguridad",
+  "Servicios de limpieza",
+  "Deudores Incobrables",
+  "Sellados",
+  "Siniestros",
+  "Verificación Policial",
+  "Viajes y Estadías",
+  "Servicio de transporte y almacenamiento",
+  "Tasas AFIP",
+  "Tasas IGJ",
+  "R.E.C.P.A.M.",
+  "Tasas SENASA",
+  "DIFERENCIA",
+  "ADELANTOS CASA MATRIZ",
+  "Redondeo",
+  "Adicional obra social",
+  "Indumentaria",
+  "Alquileres",
+];
 
 const RU_CC = { D: 4, E: 5, F: 6 };
 const ru = {
@@ -230,11 +347,38 @@ function asignarCuentasARotulos(wb, planDeCuentas, log = () => {}) {
   return { enganchadas, creados, quitadas, salteadas };
 }
 
+// Agrega los rótulos que este archivo no tenga, vacíos. Así los cuatro abren el gasto con la
+// misma lista y se pueden comparar renglón por renglón.
+function completarRotulos(wb, log = () => {}) {
+  const ax = wb.getWorksheet("Anexo II");
+  const agregados = [];
+  if (!ax) return agregados;
+  for (const rotulo of ROTULOS_COMUNES) {
+    const bloque = rtUbicarBloque(ax);
+    if (!bloque.rangoTotal) break;
+    let existe = false;
+    for (let r = bloque.desde; r <= bloque.hasta; r++) {
+      if (ru.norm(ru.texto(ax, r, 2)) === ru.norm(rotulo)) { existe = true; break; }
+    }
+    if (existe) continue;
+    const fila = bloque.rangoTotal.hasta;      // dentro del rango, para que el total lo tome
+    insertRowEn(wb, "Anexo II", fila);
+    ax.getCell(fila, 2).value = rotulo;
+    ax.getCell(fila, 3).value = { formula: `SUM(D${fila}:F${fila})` };
+    for (const c of [4, 5, 6]) ax.getCell(fila, c).value = 0;
+    agregados.push({ rotulo, fila });
+    log(`  Anexo II: renglón "${rotulo}" agregado vacío en la fila ${fila}`);
+  }
+  return agregados;
+}
+
 function unificarRotulosAnexo(wb, planDeCuentas, log = () => {}) {
   const ax = wb.getWorksheet("Anexo II");
-  if (!ax) return { renombrados: [], enganchadas: [], creados: [], quitadas: [], salteadas: [] };
+  if (!ax) return { renombrados: [], enganchadas: [], creados: [], quitadas: [], salteadas: [], completados: [] };
   const renombrados = renombrarRotulos(ax, log);
-  return { renombrados, ...asignarCuentasARotulos(wb, planDeCuentas, log) };
+  const asignadas = asignarCuentasARotulos(wb, planDeCuentas, log);
+  const completados = completarRotulos(wb, log);
+  return { renombrados, ...asignadas, completados };
 }
 
 if (typeof module !== "undefined") {
@@ -243,6 +387,6 @@ if (typeof module !== "undefined") {
   global.insertRowEn = fh.insertRowEn;
   global.rtUbicarBloque = ra.rtUbicarBloque;
   global.rtQuitarTermino = ra.rtQuitarTermino;
-  module.exports = { RENOMBRAR_ROTULOS, CUENTA_DE_ROTULO, unificarRotulosAnexo,
-    renombrarRotulos, asignarCuentasARotulos };
+  module.exports = { RENOMBRAR_ROTULOS, CUENTA_DE_ROTULO, ROTULOS_COMUNES,
+    unificarRotulosAnexo, renombrarRotulos, asignarCuentasARotulos, completarRotulos };
 }
