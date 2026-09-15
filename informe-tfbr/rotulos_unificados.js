@@ -146,12 +146,30 @@ const CUENTA_DE_ROTULO = [
   { cod: "4230900000", cc: "F", rotulo: "Impuestos al cheque"                       },
   { cod: "4231000000", cc: "F", rotulo: "R.E.C.P.A.M."                              },
   { cod: "4231200000", cc: "F", rotulo: "Gastos y comisiones bancarias"             },
-  { cod: "4240100000", cc: "E", rotulo: "Combustible"                               },];
+  { cod: "4240100000", cc: "E", rotulo: "Combustible"                               },
+
+  // Las seis que quedaban sueltas. En los Mensuales no las leía ningún renglón, y en los
+  // Acumulados colgaban de uno ajeno — REDONDEO de "Refrigerios", GRATIFICACIONES de "Acuerdo
+  // Seclo" —, así que cada archivo reportaba una cosa distinta. Cada una pasa al rótulo de su
+  // propio nombre.
+  { cod: "4211100000", cc: "E", rotulo: "Redondeo"                                  },
+  { cod: "4211200000", cc: "D", rotulo: "Telefonos"                                 },
+  { cod: "4211900000", cc: "E", rotulo: "Catering"                                  },
+  { cod: "4213100000", cc: "E", rotulo: "Gratificaciones"                           },
+  // LAVADO DE FLOTA va con el mantenimiento: el rótulo que los Acumulados traían se llamaba
+  // "Mantenimiento y lav. de flota", así que agruparlas es lo que ya venía haciéndose.
+  { cod: "4220800000", cc: "E", rotulo: "Mantenimiento de flota"                    },
+  // SINIESTROS CONVENIO HSBC comparte renglón con SINIESTROS, como en el Mensual $.
+  { cod: "4230600000", cc: "E", rotulo: "Siniestros"                                },
+];
 
 // Los 99 rótulos que tienen que estar en los CUATRO archivos. Es la unión de lo que cada uno
 // traía, ya con los sinónimos unificados. Los que un archivo no usa quedan en cero: no molestan
 // y están listos para que se les asigne una cuenta desde la configuración.
 const ROTULOS_COMUNES = [
+  // GRATIFICACIONES no tenía rótulo en ningún archivo: en los Acumulados colgaba de "Acuerdo
+  // Seclo" y de "Sueldos". Es una cuenta con centro de costo propio, así que lleva su renglón.
+  "Gratificaciones",
   "Acuerdo Seclo",
   "Adelanto Viaje",
   "Alquiler de autos",
