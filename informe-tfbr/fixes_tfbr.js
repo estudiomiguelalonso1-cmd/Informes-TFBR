@@ -16,12 +16,16 @@ const FIXES_APROBADOS_TFBR = {
         "mayo 2012. Nada los usa río abajo (confirmado). Se congelan como valores fijos, " +
         "iguales a los últimos números en caché, para romper el vínculo sin cambiar lo que " +
         "se ve en el reporte.",
+      // Las celdas se buscan POR SU FÓRMULA, no por dirección. El motor inserta filas en el
+      // Anexo II (rótulos nuevos), así que para cuando corre este fix las celdas ya se
+      // movieron: con direcciones fijas escribía números sobre celdas que no eran, y dejaba
+      // los vínculos muertos sin congelar — que al recalcular Excel daban #REF!.
       acciones: [
-        { hoja: "Anexo II", celda: "D122", accion: "freeze_static", valor: 3310746.86 },
-        { hoja: "Anexo II", celda: "D126", accion: "freeze_static", valor: 2583219.17 },
-        { hoja: "Anexo II", celda: "D129", accion: "freeze_static", valor: 78529.45 },
-        { hoja: "Anexo II", celda: "D130", accion: "freeze_static", valor: 89824.30 },
-        { hoja: "Anexo II", celda: "D132", accion: "freeze_static", valor: 36354509.30 },
+        {
+          hoja: "Anexo II", accion: "freeze_por_formula",
+          contiene: "PRESUPUESTO GASTOS FILIAL",
+          esperadas: 5,
+        },
       ],
     },
   ],
@@ -50,6 +54,38 @@ function aplicarFixesAprobados(wb, archivoId, log = () => {}) {
     for (const a of grupo.acciones) {
       const ws = wb.getWorksheet(a.hoja);
       if (!ws) throw new Error(`Fix '${grupo.id}': el archivo no tiene la hoja '${a.hoja}'.`);
+
+      // Congela toda celda cuya fórmula contenga `contiene`, con el número que esa misma celda
+      // ya tenía calculado. Es lo que dice la descripción del fix — "iguales a los últimos
+      // números en caché" — y así no depende de en qué fila quedó cada una.
+      if (a.accion === "freeze_por_formula") {
+        const encontradas = [];
+        ws.eachRow({ includeEmpty: false }, (row) => {
+          row.eachCell({ includeEmpty: false }, (cell) => {
+            const v = cell.value;
+            if (!v || typeof v !== "object" || typeof v.formula !== "string") return;
+            if (!v.formula.includes(a.contiene)) return;
+            if (typeof v.result !== "number") {
+              throw new Error(
+                `Fix '${grupo.id}': ${a.hoja}!${cell.address} tiene el vínculo muerto pero ` +
+                `ya no trae su valor calculado (${JSON.stringify(v.result)}), así que no hay ` +
+                `qué congelar. NO se generó ningún archivo.`
+              );
+            }
+            encontradas.push({ address: cell.address, cell, valor: v.result });
+          });
+        });
+        if (a.esperadas !== undefined && encontradas.length !== a.esperadas) {
+          throw new Error(
+            `Fix '${grupo.id}': esperaba ${a.esperadas} celda(s) con "${a.contiene}" en ` +
+            `'${a.hoja}' y encontré ${encontradas.length}. El archivo cambió: hay que revisar ` +
+            `el fix antes de seguir. NO se generó ningún archivo.`
+          );
+        }
+        for (const e of encontradas) { e.cell.value = e.valor; aplicadas.push(`${a.hoja}!${e.address}`); }
+        continue;
+      }
+
       const { col, fila } = ftCeldaANumeros(a.celda);
       const cell = ws.getCell(fila, col);
 
