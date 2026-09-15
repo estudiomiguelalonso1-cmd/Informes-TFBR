@@ -362,18 +362,22 @@ function pintarResultado() {
   }
 }
 
-function descargarBorrador(a) {
-  const r = App.resultados[a.id];
-  if (!r) return;
-  const blob = new Blob([r.workbookBuffer], {
+function bajarComoArchivo(buffer, nombre) {
+  const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   const url = URL.createObjectURL(blob);
   const el = document.createElement("a");
   el.href = url;
-  el.download = `${a.label} - BORRADOR.xlsx`;
+  el.download = nombre;
   el.click();
   URL.revokeObjectURL(url);
+}
+
+function descargarBorrador(a) {
+  const r = App.resultados[a.id];
+  if (!r) return;
+  bajarComoArchivo(r.workbookBuffer, `${a.label} - BORRADOR.xlsx`);
 }
 
 // El checklist de lo que hay que completar a mano, con la ubicación de cada cosa. Va en el
@@ -508,27 +512,152 @@ async function cerrarMes() {
   }
 }
 
-// ------------------------------------------------------------ historial
+// ------------------------------------------------------------ confirmar e historial
+
+// "Confirmar informes": archiva en GitHub los 4 informes de este período, con su tipo de
+// cambio y su fecha, y los deja descargables desde el historial.
+//
+// Se archiva el archivo REVISADO cuando ya se subió en el paso de aprobación, y si no, el
+// borrador que generó la app. La diferencia importa: el borrador trae las fórmulas pero
+// todavía con los números en caché del mes anterior — Excel los recalcula al abrirlo, así
+// que el archivo sirve igual, pero no es el que alguien revisó. El historial dice cuál es.
+//
+// Esto NO pisa los maestros: eso lo sigue haciendo "Guardar y cerrar el mes", que antes
+// exige que los 4 pasen los controles. Confirmar es guardar una copia del mes; cerrar es
+// mover la base de la que parte el mes que viene.
+async function confirmarInformes() {
+  const btn = document.getElementById("btnConfirmarInformes");
+  const periodo = document.getElementById("periodoInput").value.trim();
+  if (!periodo) {
+    estadoUi("confirmarStatus", "Falta el período: sin él no sé bajo qué nombre archivarlos.", "bad");
+    return;
+  }
+  const hay = ARCHIVOS_TFBR.filter(a => App.aprobadosBuffers[a.id] || App.resultados[a.id]);
+  if (!hay.length) {
+    estadoUi("confirmarStatus", "No hay informes generados para confirmar.", "bad");
+    return;
+  }
+
+  btn.disabled = true;
+  mostrar("spinnerConfirmar", true);
+  try {
+    const mensaje = `Informes ${periodo}`;
+    const archivos = {};
+    for (const a of hay) {
+      const revisado = App.aprobadosBuffers[a.id];
+      const buffer = revisado || App.resultados[a.id].workbookBuffer;
+      const g = await ghtGuardarInforme(periodo, a.id, buffer, mensaje);
+      archivos[a.id] = { ...g, label: a.label, origen: revisado ? "revisado" : "borrador" };
+      log(`Informe archivado: ${g.ruta}`);
+    }
+
+    const previo = await ghtLeerEstado();
+    const estado = (previo && previo.estado) || { historial: [] };
+    estado.historial = estado.historial || [];
+    const entrada = {
+      periodo,
+      fecha: new Date().toISOString(),
+      tcCierre: document.getElementById("tcCierreInput").value.trim(),
+      difCambioMes: document.getElementById("difCambioInput").value.trim(),
+      archivos,
+      resumen: Object.fromEntries(
+        ARCHIVOS_TFBR.map(a => [a.id, App.resultados[a.id] ? App.resultados[a.id].resumen : null])
+      ),
+    };
+    // Confirmar dos veces el mismo período actualiza la entrada en vez de duplicarla: pasa
+    // cada vez que se corrige algo y se vuelve a confirmar.
+    const i = estado.historial.findIndex(h => h.periodo === periodo);
+    if (i >= 0) estado.historial[i] = entrada; else estado.historial.push(entrada);
+    estado.periodoActual = periodo;
+    await ghtGuardarEstado(estado, mensaje);
+
+    const cuantosRevisados = Object.values(archivos).filter(x => x.origen === "revisado").length;
+    estadoUi("confirmarStatus",
+      `${hay.length} informe(s) de ${periodo} guardados en el historial` +
+      (cuantosRevisados === hay.length ? " (los revisados)."
+        : cuantosRevisados ? ` (${cuantosRevisados} revisado(s), el resto borradores).`
+        : " (borradores: todavía no subiste los revisados)."), "ok");
+  } catch (e) {
+    estadoUi("confirmarStatus", "No pude guardarlos: " + e.message, "bad");
+    log("ERROR: " + e.message);
+  } finally {
+    mostrar("spinnerConfirmar", false);
+    btn.disabled = false;
+  }
+}
 
 async function mostrarHistorial() {
   const cont = document.getElementById("historialLista");
-  cont.innerHTML = "Cargando…";
-  mostrar("cardHistorial", true);
+  cont.innerHTML = "<p class='footer-note'>Cargando…</p>";
+  mostrar("ovHistorial", true);
+  document.body.classList.add("sin-scroll");
   try {
     const r = await ghtLeerEstado();
-    if (!r || !r.estado.historial || !r.estado.historial.length) {
-      cont.innerHTML = "<p class='footer-note'>Todavía no hay ningún mes cerrado.</p>";
+    const historial = (r && r.estado && r.estado.historial) || [];
+    if (!historial.length) {
+      cont.innerHTML = "<p class='footer-note'>Todavía no hay ningún período confirmado.</p>";
       return;
     }
-    cont.innerHTML = r.estado.historial
-      .slice()
-      .reverse()
-      .map(h => `<div style="padding:8px 0; border-bottom:1px solid var(--borde);">
-          <b>${h.periodo}</b> — cerrado el ${new Date(h.fecha).toLocaleString("es-AR")}
-          (TC ${h.tcCierre || "?"})
-        </div>`)
-      .join("");
+    cont.innerHTML = historial.slice().reverse().map(pintarEntradaHistorial).join("");
   } catch (e) {
     cont.innerHTML = `<p class="footer-note">No pude leer el historial: ${e.message}</p>`;
   }
 }
+
+function pintarEntradaHistorial(h) {
+  const fecha = h.fecha ? new Date(h.fecha).toLocaleString("es-AR") : "—";
+  const datos = [`Confirmado el ${fecha}`];
+  if (h.tcCierre) datos.push(`TC de cierre <b>${h.tcCierre}</b>`);
+  if (h.difCambioMes) datos.push(`Dif. de cambio <b>${h.difCambioMes}</b>`);
+
+  // Las entradas viejas se guardaron antes de que se archivaran los archivos: se muestran
+  // igual, con sus datos, y se avisa por qué no tienen nada para bajar.
+  const archivos = h.archivos || {};
+  const ids = ARCHIVOS_TFBR.map(a => a.id).filter(id => archivos[id]);
+  const descargas = ids.length
+    ? `<div class="hist-descargas">` + ids.map(id => {
+        const f = archivos[id];
+        const ruta = String(f.ruta).replace(/'/g, "&#39;");
+        const nom = `${f.label || id} - ${h.periodo}.xlsx`.replace(/'/g, "&#39;");
+        return `<button class="cfg-btn" onclick="descargarDelHistorial('${ruta}', '${nom}', this)">` +
+               `${f.label || id}${f.origen === "borrador" ? " (borrador)" : ""}</button>`;
+      }).join("") + `</div>`
+    : `<div class="footer-note">Este período se cerró antes de que se archivaran los ` +
+      `informes, así que no hay archivos para descargar.</div>`;
+
+  return `<div class="hist-item">
+      <div class="hist-cab"><b>${h.periodo}</b><span class="hist-datos">${datos.join(" · ")}</span></div>
+      ${descargas}
+    </div>`;
+}
+
+async function descargarDelHistorial(ruta, nombre, btn) {
+  const antes = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Bajando…";
+  try {
+    const buffer = await ghtLeerInforme(ruta);
+    if (!buffer) throw new Error("ya no está en GitHub.");
+    bajarComoArchivo(buffer, nombre);
+  } catch (e) {
+    estadoUi("historialStatus", `No pude bajar ${nombre}: ${e.message}`, "bad");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = antes;
+  }
+}
+
+function cerrarHistorial() {
+  mostrar("ovHistorial", false);
+  soltarScrollSiNoQuedaVentana();
+}
+
+function cfgFondoHist(ev) {
+  if (ev.target && ev.target.id === "ovHistorial") cerrarHistorial();
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape") return;
+  const ov = document.getElementById("ovHistorial");
+  if (ov && !ov.classList.contains("hidden")) cerrarHistorial();
+});

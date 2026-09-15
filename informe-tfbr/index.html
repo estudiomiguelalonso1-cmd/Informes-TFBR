@@ -85,9 +85,18 @@
     <h2>Controles</h2>
     <div id="resultadoResumen"></div>
     <div id="resultadoDescargas" style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;"></div>
-    <div style="margin-top:18px;">
+    <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
       <button onclick="irARevision()">Ya revisé los 4 en Excel, continuar</button>
+      <button class="secondary" id="btnConfirmarInformes" onclick="confirmarInformes()">
+        Confirmar informes
+      </button>
+      <span class="spinner hidden" id="spinnerConfirmar">Guardando en el historial…</span>
     </div>
+    <p class="footer-note">
+      Confirmar guarda una copia de los 4 informes de este período en el historial, con su
+      tipo de cambio y su fecha, para volver a bajarlos cuando haga falta.
+    </p>
+    <div id="confirmarStatus"></div>
   </div>
 
   <!-- ---------- revisión y aprobación agrupada ---------- -->
@@ -106,15 +115,26 @@
     <div id="cierreStatus"></div>
   </div>
 
-  <!-- ---------- historial ---------- -->
-  <div class="card hidden" id="cardHistorial">
-    <h2>Historial de cierres</h2>
-    <div id="historialLista"></div>
-  </div>
-
   <div class="card hidden" id="cardLog">
     <h2>Registro</h2>
     <div class="log" id="logTexto"></div>
+  </div>
+
+  <!-- ---------- historial (ventana) ---------- -->
+  <div class="modal-overlay hidden" id="ovHistorial" onclick="cfgFondoHist(event)">
+    <div class="modal modal-medio" role="dialog" aria-modal="true" aria-labelledby="histTitulo">
+      <div class="cfg-head">
+        <h2 id="histTitulo">Informes confirmados</h2>
+        <button class="cfg-cerrar" onclick="cerrarHistorial()" aria-label="Cerrar">&times;</button>
+      </div>
+      <div id="historialLista" class="cfg-scroll"></div>
+      <div class="cfg-pie">
+        <div id="historialStatus"></div>
+        <div class="cfg-pie-acciones">
+          <button class="secondary" onclick="cerrarHistorial()">Cerrar</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ---------- configuración de GitHub (ventana) ---------- -->

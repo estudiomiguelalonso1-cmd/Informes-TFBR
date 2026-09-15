@@ -133,6 +133,35 @@ async function ghtGuardarEstado(estado, mensaje) {
   await ghtEscribir(GHT_ARCHIVO_ESTADO, ghtUtf8ToBase64(JSON.stringify(estado, null, 1)), sha, mensaje);
 }
 
+// ------------------------------------------------------ informes archivados por período
+//
+// Los maestros se pisan mes a mes: base_bm_ars.xlsx es SIEMPRE el último. Sin esto, el
+// informe de un mes ya cerrado solo existía en la carpeta de Descargas de quien lo generó.
+// Acá queda una copia por período, con su propio nombre de archivo, que el historial deja
+// volver a bajar desde cualquier máquina.
+const GHT_CARPETA_INFORMES = "informes";
+
+function ghtRutaInforme(periodo, archivoId) {
+  const nombre = GHT_ARCHIVOS_MAESTRO[archivoId];
+  if (!nombre) throw new Error(`archivoId desconocido: ${archivoId}`);
+  // El período viene de un campo de texto: se limpia antes de meterlo en una ruta.
+  const per = String(periodo || "").trim().replace(/[^0-9A-Za-z_-]/g, "-");
+  if (!per) throw new Error("Falta el período: sin él no sé bajo qué nombre archivar.");
+  return `${GHT_CARPETA_INFORMES}/${per}/${nombre}`;
+}
+
+async function ghtGuardarInforme(periodo, archivoId, buffer, mensaje) {
+  const ruta = ghtRutaInforme(periodo, archivoId);
+  const sha = (await ghtLeer(ruta))?.sha;   // re-confirmar un período pisa la copia anterior
+  await ghtEscribir(ruta, ghtBufferABase64(buffer), sha, mensaje);
+  return { ruta, bytes: buffer.byteLength };
+}
+
+async function ghtLeerInforme(ruta) {
+  const r = await ghtLeer(ruta);
+  return r ? ghtBase64ABuffer(r.contenidoBase64) : null;
+}
+
 // Aprobación agrupada (decisión del usuario): guarda los 4 maestros + el estado en una
 // sola operación lógica. El maestro más chico primero no importa acá como en informe-c
 // (ahí el orden defendía contra un corte a mitad de subida); acá se guarda cada uno con
@@ -155,5 +184,6 @@ if (typeof module !== "undefined") {
     loadGhtSettings, saveGhtSettings, hasGhtSettings,
     ghtLeer, ghtEscribir, ghtLeerEstado, ghtLeerMaestro, ghtGuardarMaestro,
     ghtGuardarEstado, ghtGuardarTodosLosMaestros,
+    ghtRutaInforme, ghtGuardarInforme, ghtLeerInforme,
   };
 }
