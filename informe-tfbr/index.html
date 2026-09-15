@@ -13,10 +13,6 @@
     <div>
       <span class="eyebrow">Transportes Furlong do Brasil S.A.</span>
       <h1>Cierre mensual — 4 balances</h1>
-      <p class="sub">
-        Sube el export de Onvio, revisá los controles, y aprobá los 4 balances
-        (Mensual $, Mensual R$, Acumulado $, Acumulado R$) juntos, en una sola corrida.
-      </p>
     </div>
     <div>
       <button class="secondary" onclick="abrirConfigCuentas()">Configurar cuentas</button>
@@ -89,27 +85,18 @@
 
   <!-- ---------- configurar cuentas ---------- -->
   <div class="card hidden" id="cardCuentas">
-    <h2>Configurar cuentas</h2>
-    <p class="footer-note">
-      A qué rótulo del Anexo II va cada cuenta. Una sola lista para los cuatro balances: tienen
-      que ser iguales, así que el cambio se aplica a los cuatro.
-      <br><br>
-      Lo que se muestra sale de las fórmulas, y ya con lo que el motor aplica en cada corrida
-      (limpieza del plan y unificación de rótulos) — no del archivo crudo guardado en GitHub,
-      que todavía tiene el cableado viejo. Cambiar el rótulo reescribe la fórmula: saca la
-      cuenta del renglón donde estaba y la engancha en el nuevo. Nada se sube hasta que
-      aprietes Guardar.
-    </p>
+    <div class="cfg-head">
+      <h2>Configurar cuentas</h2>
+      <div id="cfgResumen" class="cfg-resumen"></div>
+    </div>
 
     <div class="cfg-barra">
       <input id="cfgBuscador" type="text" placeholder="Buscar cuenta o rótulo…"
              oninput="cfgBuscar(this.value)">
       <label class="cfg-check">
-        <input type="checkbox" onchange="cfgVerTodas(this.checked)"> ver todas
+        <input type="checkbox" onchange="cfgVerTodas(this.checked)"> Ver todas
       </label>
     </div>
-
-    <div id="cfgResumen" class="footer-note"></div>
     <div id="cfgLista"></div>
     <div id="cfgCambios"></div>
 

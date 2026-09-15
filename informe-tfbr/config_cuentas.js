@@ -15,10 +15,10 @@
 // en el nuevo. Los cambios quedan en memoria y recién se suben al apretar Guardar.
 
 const CFG_ESTADOS = {
-  ok:       { texto: "Configurada",          clase: "ok" },
-  sin:      { texto: "Sin rótulo",           clase: "bad" },
-  varias:   { texto: "En varios rótulos",    clase: "bad" },
-  difiere:  { texto: "Distinto entre archivos", clase: "bad" },
+  ok:      { texto: "OK",                    clase: "ok"  },
+  sin:     { texto: "Sin rótulo",            clase: "bad" },
+  varias:  { texto: "En varios",             clase: "bad" },
+  difiere: { texto: "Difiere entre archivos", clase: "bad" },
 };
 
 let cfgCopias = null;      // { archivoId: workbook } — copias en memoria, ya preparadas
@@ -224,13 +224,18 @@ function cfgPintar() {
 
   const cuenta = (e) => filas.filter(f => f.estado === e).length;
   const problemas = filas.filter(f => f.estado !== "ok").length;
-  document.getElementById("cfgResumen").innerHTML =
-    `<b>${filas.length}</b> cuentas de gasto, iguales en los 4 balances · ` +
-    (problemas
-      ? `<b>${problemas}</b> a revisar (${cuenta("difiere")} distintas entre archivos, ` +
-        `${cuenta("varias")} en varios rótulos, ${cuenta("sin")} sin rótulo)`
-      : "todas configuradas") +
-    (cfgCambios.length ? ` · <b>${cfgCambios.length} cambio(s) sin guardar</b>` : "");
+  const partes = [`<b>${filas.length}</b> cuentas`];
+  if (problemas) {
+    const d = [];
+    if (cuenta("difiere")) d.push(`${cuenta("difiere")} difieren entre archivos`);
+    if (cuenta("varias")) d.push(`${cuenta("varias")} en varios rótulos`);
+    if (cuenta("sin")) d.push(`${cuenta("sin")} sin rótulo`);
+    partes.push(`<b>${problemas}</b> a revisar — ${d.join(", ")}`);
+  } else {
+    partes.push("todas configuradas");
+  }
+  if (cfgCambios.length) partes.push(`<b>${cfgCambios.length} sin guardar</b>`);
+  document.getElementById("cfgResumen").innerHTML = partes.join(" · ");
 
   const filtro = cfgNorm(cfgFiltro);
   const visibles = filas.filter(f => {
@@ -244,19 +249,22 @@ function cfgPintar() {
              "<th>Rótulo del Anexo II</th><th></th></tr></thead><tbody>";
   for (const f of visibles) {
     const e = CFG_ESTADOS[f.estado];
+    const chip = `<span class="cfg-chip ${e.clase}">${e.texto}</span>`;
     let rots;
     if (f.estado === "difiere") {
-      rots = ARCHIVOS_TFBR.filter(a => f.porArchivo[a.id])
-        .map(a => `<span class="cfg-nom">${a.label}:</span> ${f.porArchivo[a.id].join(" + ") || "—"}`)
-        .join("<br>");
+      rots = `<span class="cfg-rot">—${chip}</span>` +
+        ARCHIVOS_TFBR.filter(a => f.porArchivo[a.id])
+          .map(a => `<span class="cfg-porarch"><b>${a.label}</b> · ${f.porArchivo[a.id].join(" + ") || "sin rótulo"}</span>`)
+          .join("");
     } else {
-      rots = f.rotulos.length ? f.rotulos.join(" + ") : "—";
+      rots = `<span class="cfg-rot">${f.rotulos.length ? f.rotulos.join(" + ") : "—"}` +
+             `${f.estado === "ok" ? "" : chip}</span>`;
     }
-    const saldo = Object.values(f.saldos).find(v => Math.abs(v) > 0.005);
+    const saldo = Object.values(f.saldos).find(v => Math.abs(v) > 0.005) || 0;
     html += `<tr>` +
-      `<td><span class="mono">${f.cod}</span><br><span class="cfg-nom">${f.nom}</span></td>` +
-      `<td class="mono cfg-saldo">${(saldo || 0).toFixed(2)}</td>` +
-      `<td>${rots}<br><span class="status-msg ${e.clase} cfg-chip">${e.texto}</span></td>` +
+      `<td><span class="mono">${f.cod}</span><span class="cfg-nom">${f.nom}</span></td>` +
+      `<td class="mono cfg-saldo">${saldo.toFixed(2)}</td>` +
+      `<td>${rots}</td>` +
       `<td><button class="cfg-btn" onclick="cfgElegir('${f.cod}')">Cambiar</button></td>` +
       `</tr>`;
     if (cfgEditando === f.cod) {
@@ -270,7 +278,11 @@ function cfgPintar() {
     }
   }
   html += "</tbody></table>";
-  if (!visibles.length) html = "<p class='footer-note'>No hay cuentas que mostrar con este filtro.</p>";
+  if (!visibles.length) {
+    html = `<div class="cfg-vacio">${cfgSoloProblemas && !cfgFiltro
+      ? "Todas las cuentas están configuradas. Marcá «Ver todas» para revisarlas."
+      : "Ninguna cuenta coincide con la búsqueda."}</div>`;
+  }
   cont.innerHTML = html;
 
   document.getElementById("btnGuardarCuentas").disabled = cfgCambios.length === 0;
