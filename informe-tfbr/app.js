@@ -217,7 +217,9 @@ async function procesarPeriodo() {
       // Los errores que el archivo YA tenía antes de que lo tocáramos: son la línea de base
       // contra la que después se comparan los del archivo aprobado, para distinguir un
       // problema nuevo de uno viejo sin depender de una lista escrita a mano.
-      const erroresPrevios = buscarCeldasEnError(wb);
+      // con la fórmula de cada una, para que un error que ya venía no cuente como nuevo
+      // cuando el motor lo corre de fila (ver vtHuellaError)
+      const erroresPrevios = celdasEnErrorDetalle(wb);
 
       const cuentasExport = App.cuentasExport[a.periodo];
       const { resumen, planDeCuentas, escritas } =

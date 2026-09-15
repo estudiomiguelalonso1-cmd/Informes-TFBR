@@ -102,6 +102,13 @@ function controlCuentasLevantadas(ws, planDeCuentas, escritas) {
 
 // Celdas en error (#REF!, #VALUE!…) en todo el libro.
 function buscarCeldasEnError(wb) {
+  return celdasEnErrorDetalle(wb).map(e => e.donde);
+}
+
+// Además de dónde está, con qué fórmula. La dirección sola no alcanza para comparar contra la
+// corrida anterior: el motor inserta y borra filas, así que un error que ya venía de antes
+// aparece más abajo y se contaría como nuevo. La fórmula viaja con la celda.
+function celdasEnErrorDetalle(wb) {
   const encontradas = [];
   wb.worksheets.forEach(ws => {
     ws.eachRow({ includeEmpty: false }, (row) => {
@@ -109,11 +116,22 @@ function buscarCeldasEnError(wb) {
         const v = cell.value;
         const enError = v && typeof v === "object" &&
           (v.error || (v.result && v.result.error));
-        if (enError) encontradas.push(`${ws.name}!${cell.address}`);
+        if (!enError) return;
+        encontradas.push({
+          donde: `${ws.name}!${cell.address}`,
+          hoja: ws.name,
+          formula: (v && typeof v.formula === "string") ? v.formula : null,
+        });
       });
     });
   });
   return encontradas;
+}
+
+// La marca con la que se compara un error entre una corrida y la siguiente: la hoja y su
+// fórmula. Si la celda no tiene fórmula no queda otra que usar la dirección.
+function vtHuellaError(e) {
+  return e.formula ? `${e.hoja}${e.formula}` : e.donde;
 }
 
 // Los errores que ya traía el archivo NO se listan a mano acá: se toman del propio maestro
@@ -130,10 +148,17 @@ function validarRecalculado(wb, { planDeCuentas, escritas, erroresPrevios }) {
     controlCuentasLevantadas(ws, plan, escritas),
   ];
 
-  const conocidos = new Set(erroresPrevios || []);
-  const enError = buscarCeldasEnError(wb);
-  const nuevos = enError.filter(x => !conocidos.has(x));
-  const preexistentes = enError.filter(x => conocidos.has(x));
+  // Se compara por hoja + fórmula, no por dirección: el motor mueve filas, y un #REF! que ya
+  // venía de antes aparece más abajo. Comparando direcciones, cada corrida que inserta una
+  // fila frenaba el cierre denunciando como nuevos los errores de siempre.
+  const previos = Array.isArray(erroresPrevios) ? erroresPrevios : [];
+  const conocidos = new Set(previos.map(e =>
+    (e && typeof e === "object") ? vtHuellaError(e) : e));
+  const enErrorDet = celdasEnErrorDetalle(wb);
+  const esConocido = (e) => conocidos.has(vtHuellaError(e)) || conocidos.has(e.donde);
+  const nuevos = enErrorDet.filter(e => !esConocido(e)).map(e => e.donde);
+  const preexistentes = enErrorDet.filter(esConocido).map(e => e.donde);
+  const enError = enErrorDet.map(e => e.donde);
 
   controles.push({
     nombre: "Sin errores nuevos",
@@ -161,6 +186,7 @@ if (typeof module !== "undefined") {
   global.derivarLayoutSaldos = cfg.derivarLayoutSaldos;
   global.leerPlanDeCuentas = cfg.leerPlanDeCuentas;
   module.exports = {
-    validarRecalculado, controlDebeHaber, controlCuentasLevantadas, buscarCeldasEnError,
+    validarRecalculado, controlDebeHaber, controlCuentasLevantadas,
+    buscarCeldasEnError, celdasEnErrorDetalle, vtHuellaError,
   };
 }
