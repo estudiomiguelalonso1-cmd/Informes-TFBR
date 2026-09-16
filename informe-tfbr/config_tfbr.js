@@ -50,6 +50,20 @@ function ctFormulaSaldo(keyCol, fila, staging) {
   const clave = `LEFT(${keyCol}${fila},FIND(" ",${keyCol}${fila}&" ")-1)`;
   return `IFERROR(VLOOKUP(${clave},${staging},2,FALSE),0)`;
 }
+// El importe con signo de una cuenta, como lo lee el Anexo II.
+//
+// SALDOS parte cada cuenta en dos columnas: la deudora vale IF(saldo>0,saldo,0) y la
+// acreedora IF(saldo<0,-saldo,0). Una sola de las dos nunca alcanza — un gasto que en el mes
+// quedó acreedor (una devolución, un recupero, un ajuste) vive entero en la columna acreedora,
+// y un renglón que solo lee la deudora lo muestra en cero sin que nada avise. Por eso se
+// engancha siempre la resta de las dos, que es lo que hacen los renglones bien armados del
+// Anexo II ("+SALDOS!B161-SALDOS!C161").
+function ctFormulaNetaAnexo(layout, fila) {
+  const d = ctColNumeroALetra(layout.deudorCol);
+  const a = ctColNumeroALetra(layout.acreedorCol);
+  return `+SALDOS!${d}${fila}-SALDOS!${a}${fila}`;
+}
+
 const CT_RE_IF_POS = /^IF\(\$?([A-Z]{1,3})\$?(\d+)\s*>\s*0\s*,/i;
 const CT_RE_IF_NEG = /^IF\(\$?([A-Z]{1,3})\$?(\d+)\s*<\s*0\s*,/i;
 const CT_RE_CUENTA = /^\s*(\d{6,})/;
@@ -214,6 +228,6 @@ function ctColSaldoDeFila(ws, fila, layout) {
 if (typeof module !== "undefined") {
   module.exports = {
     derivarLayoutSaldos, leerPlanDeCuentas, ctLeerVlookup, ctFormulaSaldo,
-    ctColLetraANumero, ctColNumeroALetra,
+    ctFormulaNetaAnexo, ctColLetraANumero, ctColNumeroALetra,
   };
 }

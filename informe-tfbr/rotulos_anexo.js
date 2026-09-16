@@ -121,12 +121,12 @@ function agregarRotulosAnexo(wb, archivoId, layout, planDeCuentas, log = () => {
     // se estira y el renglón nuevo queda contado
     const filaNueva = bloque.rangoTotal ? bloque.rangoTotal.hasta : bloque.hasta;
     const modificadas = insertRowEn(wb, "Anexo II", filaNueva);
-    const colImp = bloque.colImporte || "C";
     const cc = RT_CC[r.cc] || 5;
     ax.getCell(filaNueva, 2).value = r.rotulo;
     ax.getCell(filaNueva, 3).value = { formula: `SUM(D${filaNueva}:F${filaNueva})` };
     for (const c of [4, 5, 6]) ax.getCell(filaNueva, c).value = 0;
-    ax.getCell(filaNueva, cc).value = { formula: `+SALDOS!${colImp}${cuenta.fila}` };
+    // La resta de la columna deudora y la acreedora, no una sola: ver ctFormulaNetaAnexo.
+    ax.getCell(filaNueva, cc).value = { formula: ctFormulaNetaAnexo(layout, cuenta.fila) };
 
     agregados.push({ rotulo: r.rotulo, fila: filaNueva, cod: r.cod, quitadoDe: quitados });
     log(`  Anexo II: renglón "${r.rotulo}" agregado en la fila ${filaNueva}, leyendo ${r.cod} ` +
@@ -139,5 +139,6 @@ function agregarRotulosAnexo(wb, archivoId, layout, planDeCuentas, log = () => {
 if (typeof module !== "undefined") {
   const fh = require("./formula_hojas.js");
   global.insertRowEn = fh.insertRowEn;
+  global.ctFormulaNetaAnexo = require("./config_tfbr.js").ctFormulaNetaAnexo;
   module.exports = { ROTULOS_ANEXO, agregarRotulosAnexo, rtUbicarBloque, rtQuitarTermino };
 }

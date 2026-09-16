@@ -175,12 +175,11 @@ function cfgMoverEnTodos(cod, rotuloDestino) {
     for (let r = est.bloque.desde; r <= est.bloque.hasta; r++) {
       for (const c of [4, 5, 6]) rtQuitarTermino(ax, `${String.fromCharCode(64 + c)}${r}`, cuenta.fila);
     }
-    const colImp = est.bloque.colImporte || "C";
+    const termino = ctFormulaNetaAnexo(est.layout, cuenta.fila);   // deudora menos acreedora
     const celda = ax.getCell(destino.fila, col);
     const v = celda.value;
     const previo = (v && typeof v === "object" && typeof v.formula === "string") ? v.formula : "";
-    celda.value = { formula: previo ? `${previo}+SALDOS!${colImp}${cuenta.fila}`
-                                    : `+SALDOS!${colImp}${cuenta.fila}` };
+    celda.value = { formula: previo ? `${previo}${termino}` : termino };
     hechos.push(a.id);
   }
   return hechos;

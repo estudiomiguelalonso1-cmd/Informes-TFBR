@@ -80,6 +80,22 @@
     <div id="exportStatus"></div>
   </div>
 
+  <!-- ---------- cuentas nuevas sin rótulo ---------- -->
+  <div class="card hidden" id="cardNuevas">
+    <h2>Cuentas nuevas: ¿a qué rótulo van?</h2>
+    <div id="nuevasResumen" class="footer-note" style="margin-top:0;"></div>
+    <div id="nuevasLista" style="margin-top:16px;"></div>
+    <div style="margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button id="btnAplicarNuevas" onclick="aplicarCuentasNuevas()">Aplicar a los 4</button>
+      <span class="spinner hidden" id="spinnerNuevas">Aplicando…</span>
+    </div>
+    <p class="footer-note">
+      La respuesta se aplica a los cuatro archivos y queda guardada: estas cuentas no se
+      vuelven a preguntar. «Dejar sin rótulo» también se recuerda.
+    </p>
+    <div id="nuevasStatus"></div>
+  </div>
+
   <!-- ---------- resultado / controles ---------- -->
   <div class="card hidden" id="cardResultado">
     <h2>Controles</h2>
@@ -221,6 +237,7 @@
 <script src="parser_tfbr.js"></script>
 <script src="config_tfbr.js"></script>
 <script src="config_cuentas.js"></script>
+<script src="cuentas_nuevas.js"></script>
 <script src="duplicados_tfbr.js"></script>
 <script src="insertar_cuenta.js"></script>
 <script src="plan_oficial.js"></script>

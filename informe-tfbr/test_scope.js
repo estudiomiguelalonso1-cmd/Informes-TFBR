@@ -10,12 +10,15 @@
 const fs = require("fs");
 const path = require("path");
 
-// El mismo orden en el que index.html los carga.
-const ARCHIVOS = [
-  "formula_utils.js", "formula_hojas.js", "parser_tfbr.js", "config_tfbr.js", "config_cuentas.js",
-  "duplicados_tfbr.js", "insertar_cuenta.js", "plan_oficial.js", "limpieza_plan.js", "repuntes_anexo.js", "rotulos_anexo.js", "rotulos_unificados.js", "motor_tfbr.js", "periodo_tfbr.js", "validar_tfbr.js",
-  "pendientes_tfbr.js", "fixes_tfbr.js", "github_tfbr.js", "app.js",
-];
+// La lista sale de index.html, no de acá: escrita a mano se desactualiza en silencio —
+// un archivo nuevo no entraba en la comparación y el choque que este test existe para
+// encontrar pasaba igual. Se saltean los de vendor/, que son librerías de terceros.
+const ARCHIVOS = fs.readFileSync(path.join(__dirname, "index.html"), "utf8")
+  .split("\n")
+  .map(l => /<script src="([^"]+)"/.exec(l))
+  .filter(Boolean)
+  .map(m => m[1])
+  .filter(src => !src.startsWith("vendor/"));
 
 // Solo las declaraciones de nivel superior: las que arrancan al principio de la línea.
 const RE_DECL = /^(?:const|let|var|function|class)\s+([A-Za-z_$][A-Za-z0-9_$]*)/;

@@ -61,7 +61,8 @@ function escribirStaging(wb, layout, matcheadas, log = () => {}) {
 
 // Corre el proceso completo para UN archivo/moneda. No guarda el archivo (eso lo decide
 // quien llama, según si va a pedir más pasos antes de bajar el .xlsx).
-function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, altaAutomatica = true, log = () => {} }) {
+function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, altaAutomatica = true,
+                              rotulosGuardados = null, log = () => {} }) {
   // Primero de todo: poner el plan de cuentas de SALDOS de acuerdo con el plan oficial. Corrige
   // los códigos tipeados con un dígito de menos y junta las filas que quedan repetidas. Va
   // antes que cualquier otra cosa porque cambia a qué fila resuelve cada código, que es lo que
@@ -117,6 +118,18 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // Los cuatro archivos con los mismos rótulos, tomando el Mensual $ como modelo, y cada
   // cuenta leída por un solo renglón.
   const unificacion = unificarRotulosAnexo(wb, planDeCuentas, log);
+
+  // Cuentas de gasto que ningún renglón del Anexo II lee. Primero se enganchan solas las que
+  // ya tienen decisión tomada en un mes anterior; las que quedan se devuelven para que la
+  // pantalla pregunte a qué rótulo van. Va acá, después de la unificación, porque hasta este
+  // punto los renglones todavía se están moviendo.
+  const rotulosAuto = aplicarRotulosGuardados(wb, rotulosGuardados, log);
+  const decididas = rotulosGuardados || {};
+  const sinRotulo = cuentasSinRotulo(wb).filter(c => !(c.cod in decididas));
+  for (const c of sinRotulo) {
+    log(`  ⚠ ${c.cod} ${c.nom} está en SALDOS pero ningún renglón del Anexo II la lee: ` +
+        `hay que decir a qué rótulo va, o su importe no llega al estado de resultados.`);
+  }
 
   const { matcheadas, sinMapear, escritas } = emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo);
 
@@ -175,6 +188,8 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       repuntesSalteados: repuntes.salteados,
       altas,
       sinEnganchar: sinEnganchar.map(a => ({ codigo: a.codigo, clave: a.clave })),
+      rotulosAuto,
+      sinRotulo,
       totalEscrito,
       totalExport,
     },
@@ -195,5 +210,8 @@ if (typeof module !== "undefined") {
   global.limpiarPlanDeCuentas = require("./limpieza_plan.js").limpiarPlanDeCuentas;
   global.agregarRotulosAnexo = require("./rotulos_anexo.js").agregarRotulosAnexo;
   global.unificarRotulosAnexo = require("./rotulos_unificados.js").unificarRotulosAnexo;
+  const cn = require("./cuentas_nuevas.js");
+  global.aplicarRotulosGuardados = cn.aplicarRotulosGuardados;
+  global.cuentasSinRotulo = cn.cuentasSinRotulo;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }

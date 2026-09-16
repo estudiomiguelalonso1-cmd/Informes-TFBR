@@ -16,6 +16,7 @@ const App = {
   resultados: {},       // archivoId -> { resumen, workbookBuffer }
   aprobadosBuffers: {}, // archivoId -> ArrayBuffer (subido en la revisión final)
   validaciones: {},     // archivoId -> resultado de validarRecalculado
+  rotulosGuardados: {}, // codigo -> rótulo del Anexo II (null = sin rótulo, decidido)
   logLineas: [],
 };
 
@@ -54,6 +55,7 @@ async function iniciar() {
   document.getElementById("cfgRepo").value = s.repo || "";
   document.getElementById("cfgRama").value = s.rama || "main";
   document.getElementById("cfgCarpeta").value = s.carpeta || "informe-tfbr";
+  await cargarRotulosGuardados();
   await revisarMaestrosExistentes();
 }
 
@@ -114,6 +116,7 @@ async function guardarConfig() {
     await ghtLeerEstado(); // si esto no tira, la conexión sirve (404 = repo ok, archivo nuevo)
     estadoUi("configStatus", "Conectado correctamente.", "ok");
     mostrar("cardSinConfig", false);
+    await cargarRotulosGuardados();
     await revisarMaestrosExistentes();
   } catch (e) {
     estadoUi("configStatus", "No pude conectar: " + e.message, "bad");
@@ -123,6 +126,18 @@ async function guardarConfig() {
 }
 
 // ------------------------------------------------------------ primera vez (alta de maestros)
+
+// Las decisiones de rótulo tomadas en meses anteriores. Se leen una vez al arrancar: con
+// ellas, una cuenta que ya se decidió no vuelve a preguntarse nunca.
+async function cargarRotulosGuardados() {
+  try {
+    const r = await ghtLeerEstado();
+    App.rotulosGuardados = (r && r.estado && r.estado.rotulosCuentas) || {};
+  } catch (e) {
+    App.rotulosGuardados = {};
+    log("No pude leer las decisiones de rótulo guardadas: " + e.message);
+  }
+}
 
 async function revisarMaestrosExistentes() {
   const faltantes = [];
@@ -264,7 +279,8 @@ async function procesarPeriodo() {
 
       const cuentasExport = App.cuentasExport[a.periodo];
       const { resumen, planDeCuentas, escritas } =
-        procesarMaestroTFBR({ wb, cuentasExport, campoSaldo: a.campoSaldo, archivoId: a.id, log });
+        procesarMaestroTFBR({ wb, cuentasExport, campoSaldo: a.campoSaldo, archivoId: a.id,
+                              rotulosGuardados: App.rotulosGuardados, log });
 
       // el TC de cierre y la cifra de dif de cambio solo existen en uno de los 4 archivos:
       // escribirDatosDelPeriodo se fija solo si este los tiene, y avisa lo que no pudo cargar
@@ -281,9 +297,15 @@ async function procesarPeriodo() {
       const outBuffer = await wb.xlsx.writeBuffer();
       App.resultados[a.id] = {
         resumen, periodoDatos, planDeCuentas, escritas, erroresPrevios, pendientes,
+        // El workbook queda vivo: si hay cuentas nuevas que enganchar, la respuesta se
+        // escribe sobre ESTE libro y recién ahí se vuelve a generar el .xlsx. Volver a
+        // cargarlo desde el buffer costaría medio segundo por archivo y cuatro veces más
+        // memoria por nada.
+        wb,
         workbookBuffer: outBuffer,
       };
     }
+    pintarCuentasNuevas();
     pintarResultado();
     mostrar("cardResultado", true);
     document.getElementById("cardResultado").scrollIntoView({ behavior: "smooth" });
@@ -293,6 +315,134 @@ async function procesarPeriodo() {
   } finally {
     mostrar("spinnerProcesar", false);
     document.getElementById("btnProcesar").disabled = false;
+  }
+}
+
+// ------------------------------------------------- cuentas nuevas: ¿a qué rótulo van?
+
+// Junta las cuentas sueltas de los cuatro archivos en una sola lista. Una cuenta nueva
+// aparece en los cuatro, y los cuatro tienen que engancharla al mismo rótulo — preguntar
+// cuatro veces lo mismo sería la forma más rápida de que los archivos queden desalineados.
+function nuevasPendientes() {
+  const porCod = {};
+  for (const a of ARCHIVOS_TFBR) {
+    const r = App.resultados[a.id];
+    if (!r || !r.resumen.sinRotulo) continue;
+    for (const c of r.resumen.sinRotulo) {
+      if (!porCod[c.cod]) porCod[c.cod] = { cod: c.cod, nom: c.nom, archivos: [] };
+      porCod[c.cod].archivos.push(a.id);
+    }
+  }
+  return Object.values(porCod).sort((x, y) => x.cod.localeCompare(y.cod));
+}
+
+// Los rótulos que existen en LOS CUATRO. Ofrecer uno que solo tiene un archivo dejaría la
+// cuenta enganchada en unos y suelta en otros.
+function rotulosComunes() {
+  const listas = [];
+  for (const a of ARCHIVOS_TFBR) {
+    const r = App.resultados[a.id];
+    if (r && r.wb) listas.push(cnRotulosDisponibles(r.wb));
+  }
+  if (!listas.length) return [];
+  const norm = (t) => String(t).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().trim();
+  const restantes = listas.slice(1).map(l => new Set(l.map(norm)));
+  return listas[0].filter(r => restantes.every(s => s.has(norm(r))));
+}
+
+function pintarCuentasNuevas() {
+  const pendientes = nuevasPendientes();
+  const cont = document.getElementById("nuevasLista");
+  if (!pendientes.length) {
+    mostrar("cardNuevas", false);
+    const auto = ARCHIVOS_TFBR.reduce((n, a) => {
+      const r = App.resultados[a.id];
+      return Math.max(n, (r && r.resumen.rotulosAuto) ? r.resumen.rotulosAuto.length : 0);
+    }, 0);
+    if (auto) log(`  ${auto} cuenta(s) se engancharon solas con decisiones de meses anteriores.`);
+    return;
+  }
+
+  const rotulos = rotulosComunes();
+  const opts = `<option value="">— dejar sin rótulo —</option>` +
+    rotulos.map(r => `<option value="${r.replace(/"/g, "&quot;")}">${r}</option>`).join("");
+
+  cont.innerHTML = pendientes.map(p => `
+    <div class="nueva-fila">
+      <div>
+        <span class="mono">${p.cod}</span>
+        <span class="cfg-nom">${p.nom}</span>
+        <span class="footer-note" style="margin:0;">Aparece en ${p.archivos.length} de ${ARCHIVOS_TFBR.length} archivos</span>
+      </div>
+      <select id="nueva_${p.cod}">${opts}</select>
+    </div>`).join("");
+
+  document.getElementById("nuevasResumen").innerHTML =
+    `<b>${pendientes.length}</b> cuenta(s) de gasto no las lee ningún renglón del Anexo II. ` +
+    `Mientras sigan así, su importe entra en SALDOS pero no llega al estado de resultados.`;
+  estadoUi("nuevasStatus", "", "");
+  mostrar("cardNuevas", true);
+}
+
+// Aplica lo elegido a los cuatro archivos y guarda la decisión, para no volver a preguntar.
+// "Dejar sin rótulo" también es una decisión y también se guarda: hay cuentas que a propósito
+// no van a ningún renglón, y volver a preguntar por ellas todos los meses sería ruido.
+async function aplicarCuentasNuevas() {
+  const btn = document.getElementById("btnAplicarNuevas");
+  btn.disabled = true;
+  mostrar("spinnerNuevas", true);
+  try {
+    const pendientes = nuevasPendientes();
+    const enganchadas = [], sinRotulo = [];
+
+    for (const p of pendientes) {
+      const rotulo = document.getElementById(`nueva_${p.cod}`).value;
+      App.rotulosGuardados[p.cod] = rotulo || null;
+      if (!rotulo) { sinRotulo.push(p); continue; }
+      const donde = [];
+      for (const a of ARCHIVOS_TFBR) {
+        const r = App.resultados[a.id];
+        if (!r || !r.wb) continue;
+        const res = engancharCuentaEnRotulo(r.wb, p.cod, rotulo);
+        if (res.hecho) donde.push(a.label);
+        else log(`  ${a.label}: no pude enganchar ${p.cod} — ${res.motivo}`);
+      }
+      enganchadas.push({ ...p, rotulo, archivos: donde });
+      log(`  ${p.cod} ${p.nom} → "${rotulo}" en ${donde.length} archivo(s).`);
+    }
+
+    // Los .xlsx se vuelven a generar: los que se bajen ahora ya traen el enganche.
+    for (const a of ARCHIVOS_TFBR) {
+      const r = App.resultados[a.id];
+      if (r && r.wb) r.workbookBuffer = await r.wb.xlsx.writeBuffer();
+    }
+
+    // La decisión queda en GitHub. Si esto falla, lo aplicado a los archivos sigue valiendo:
+    // se avisa que el mes que viene va a volver a preguntar, y no se pierde el trabajo.
+    let aviso = "";
+    try {
+      const previo = await ghtLeerEstado();
+      const estado = (previo && previo.estado) || { historial: [] };
+      estado.rotulosCuentas = { ...(estado.rotulosCuentas || {}), ...App.rotulosGuardados };
+      await ghtGuardarEstado(estado, `Rótulos de cuentas nuevas: ${pendientes.map(p => p.cod).join(", ")}`);
+    } catch (e) {
+      aviso = ` No pude guardar la decisión en GitHub (${e.message}), así que el mes que viene ` +
+              `va a volver a preguntar. Los archivos de este mes sí quedaron bien.`;
+    }
+
+    pintarCuentasNuevas();
+    pintarResultado();
+    estadoUi("nuevasStatus",
+      `${enganchadas.length} cuenta(s) enganchadas` +
+      (sinRotulo.length ? `, ${sinRotulo.length} quedaron sin rótulo a propósito` : "") +
+      `. Volvé a bajar los borradores: los de antes no tienen el cambio.` + aviso,
+      aviso ? "" : "ok");
+  } catch (e) {
+    estadoUi("nuevasStatus", "No pude aplicarlo: " + e.message, "bad");
+    log("ERROR: " + e.message);
+  } finally {
+    mostrar("spinnerNuevas", false);
+    btn.disabled = false;
   }
 }
 
