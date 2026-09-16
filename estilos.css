@@ -562,3 +562,48 @@ tr.cfg-editor select:focus{outline:none; border-color:var(--acento);
 .cfg-vacio{
   padding:28px 2px; color:var(--tenue); font-size:14px; text-align:center;
 }
+
+/* ---------------------------------------------------------------- filtros de la lista
+   Un botón por estado, con el número al lado. Reemplaza al casillero "Ver todas", que sólo
+   distinguía entre "las que tienen problema" y "todas": con 90 cuentas eso no alcanza para
+   encontrar nada. */
+.cfg-filtros{
+  display:flex; gap:6px; flex-wrap:wrap; margin:12px 0 2px;
+}
+.cfg-filtro{
+  display:inline-flex; align-items:center; gap:7px;
+  padding:6px 12px; border-radius:100px;
+  background:var(--superficie); color:var(--tinta-suave);
+  border:1px solid var(--borde); font:inherit; font-size:13px; font-weight:500;
+  cursor:pointer; transition:var(--transicion); white-space:nowrap;
+}
+.cfg-filtro:hover{border-color:var(--borde-fuerte); color:var(--tinta);}
+.cfg-filtro.activo{
+  background:var(--acento); border-color:var(--acento); color:#fff; font-weight:600;
+}
+.cfg-filtro.vacio{color:var(--tenue);}
+.cfg-filtro.vacio:not(.activo):hover{color:var(--tinta-suave);}
+.cfg-filtro:focus-visible{outline:2px solid var(--acento); outline-offset:2px;}
+.cfg-filtro-n{
+  font-variant-numeric:tabular-nums; font-size:11.5px; font-weight:600;
+  padding:1px 6px; border-radius:100px;
+  background:var(--fondo-alto); color:var(--tinta-media);
+}
+.cfg-filtro.activo .cfg-filtro-n{background:rgba(255,255,255,.22); color:#fff;}
+.cfg-filtro.vacio .cfg-filtro-n{background:transparent; color:var(--tenue);}
+
+/* Lo que coincide con la búsqueda, marcado. */
+table.cfg mark{
+  background:var(--acento-suave); color:var(--tinta);
+  padding:0 1px; border-radius:2px;
+}
+
+/* La fila abierta para editar se distingue de las demás. */
+table.cfg tr.cfg-abierta td{background:var(--fondo-alto);}
+tr.cfg-editor .cfg-editor-caja{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13.5px;
+}
+.cfg-btn.primario{
+  background:var(--acento); border-color:var(--acento); color:#fff; font-weight:600;
+}
+.cfg-btn.primario:hover{background:var(--acento); border-color:var(--acento); color:#fff; filter:brightness(1.08);}

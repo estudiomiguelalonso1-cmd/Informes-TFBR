@@ -25,8 +25,21 @@ let cfgCopias = null;      // { archivoId: workbook } — copias en memoria, ya 
 let cfgCambios = [];
 let cfgFiltro = "";
 let cfgEditando = null;
-let cfgSoloProblemas = true;
 let cfgHoja = "Anexo II";   // la solapa abierta
+
+// El filtro de la lista. Antes era un casillero "Ver todas" que sólo distinguía entre "las que
+// tienen problema" y "todas", y con 90 cuentas eso no alcanza: lo que se busca es "cuáles
+// quedaron sin rótulo" o "cuáles difieren entre archivos", que son preguntas distintas y
+// llevan a acciones distintas.
+const CFG_FILTROS = [
+  { id: "revisar", texto: "A revisar",  incluye: (f) => f.estado !== "ok" },
+  { id: "sin",     texto: "Sin rótulo", incluye: (f) => f.estado === "sin" },
+  { id: "difiere", texto: "Difieren",   incluye: (f) => f.estado === "difiere" },
+  { id: "varias",  texto: "En varios",  incluye: (f) => f.estado === "varias" },
+  { id: "ok",      texto: "Con rótulo", incluye: (f) => f.estado === "ok" },
+  { id: "todas",   texto: "Todas",      incluye: () => true },
+];
+let cfgFiltroEstado = "revisar";
 
 function cfgTexto(ws, r, c) {
   const v = ws.getCell(r, c).value;
@@ -41,16 +54,31 @@ function cfgNorm(t) {
 
 // Cómo queda un archivo después de lo que el motor aplica en cada corrida. Es lo que hay que
 // mirar: el maestro guardado todavía no lo tiene.
-function cfgPrepararCopia(wb) {
+// Tiene que quedar como lo deja el motor, paso por paso y en el mismo orden. Si el panel
+// muestra otra cosa, la persona configura contra un estado que no existe: antes se veía
+// "Autovia del Mercosur — sin rótulo" en los Mensuales cuando el motor ya la enganchaba en
+// "- Proveedores", y los préstamos aparecían agrupados donde el motor ya los había abierto.
+//
+// Lo único que no se puede replicar acá es lo que depende del sumas y saldos del mes (el alta
+// de cuentas nuevas y el valor de origen del Anexo I): el panel se abre sin haber cargado
+// ningún export. Nada de eso cambia a qué renglón va una cuenta, que es lo que el panel muestra.
+function cfgPrepararCopia(wb, archivoId) {
   materializarFormulasCompartidas(wb);
-  const limpieza = limpiarPlanDeCuentas(wb, () => {});
-  const layout = derivarLayoutSaldos(wb);
+  limpiarPlanDeCuentas(wb, () => {});
+  let layout = derivarLayoutSaldos(wb);
   const plan = leerPlanDeCuentas(wb, layout).cuentas;
   aplicarRepuntesAnexo(wb, null, plan, () => {});
   unificarRotulosAnexo(wb, plan, () => {});
   // Sin esto, "- Proveedores" del Pasivo se vería leyendo 5 cuentas en vez de 31: el rango
   // todavía sin expandir sólo nombra sus extremos.
   expandirRangosSaldos(wb, layout, () => {});
+  aplicarRenombresRenglon(wb, layout, () => {});
+  consolidarPrestamos(wb, layout, () => {});
+  // Insertar filas mueve todo: el layout hay que volver a derivarlo.
+  layout = derivarLayoutSaldos(wb);
+  agregarRenglonesFaltantes(wb, layout, archivoId, () => {});
+  layout = derivarLayoutSaldos(wb);
+  aplicarAsignaciones(wb, layout, () => {});
   return wb;
 }
 
@@ -259,8 +287,13 @@ async function cfgCargar() {
       const buffer = await cargado.wb.xlsx.writeBuffer();
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(buffer);
-      cfgCopias[a.id] = cfgPrepararCopia(wb);
+      cfgCopias[a.id] = cfgPrepararCopia(wb, a.id);
     }
+    // Y lo último que hace el motor: que los cuatro lean las mismas cuentas. Necesita ver los
+    // cuatro a la vez, así que va después del bucle.
+    alinearHojas(
+      ARCHIVOS_TFBR.filter(a => cfgCopias[a.id]).map(a => ({ id: a.id, label: a.label, wb: cfgCopias[a.id] })),
+      () => {});
     estadoUi("cfgStatus", "", "");
     cfgPintar();
   } catch (e) {
@@ -293,20 +326,11 @@ function cfgPintar() {
   cfgPintarSolapas();
   const { filas, rotulos } = cfgVistaUnica();
 
-  const cuenta = (e) => filas.filter(f => f.estado === e).length;
   const problemas = filas.filter(f => f.estado !== "ok").length;
   const partes = [`<b>${filas.length}</b> cuentas en <b>${cfgHoja}</b>`];
-  if (problemas) {
-    const d = [];
-    if (cuenta("difiere")) d.push(`${cuenta("difiere")} difieren entre archivos`);
-    if (cuenta("varias")) d.push(`${cuenta("varias")} en varios rótulos`);
-    if (cuenta("sin")) d.push(`${cuenta("sin")} sin rótulo`);
-    partes.push(`<b>${problemas}</b> a revisar — ${d.join(", ")}`);
-  } else {
-    partes.push("todas configuradas");
-  }
+  partes.push(problemas ? `<b>${problemas}</b> a revisar` : "todas configuradas");
   if (cfgCambios.length) partes.push(`<b>${cfgCambios.length} sin guardar</b>`);
-  document.getElementById("cfgResumen").innerHTML = partes.join(" · ");
+  document.getElementById("cfgResumen").innerHTML = partes.join(" \u00b7 ");
 
   const nota = document.getElementById("cfgNota");
   if (nota) {
@@ -316,18 +340,44 @@ function cfgPintar() {
       : "";
   }
 
-  // Buscar mira SIEMPRE las 90 cuentas, esté o no tildado "Ver todas". Con el filtro de
-  // problemas por delante, buscar "sueldos" con todo configurado no devolvía nada: la cuenta
-  // existía pero estaba descartada antes de comparar el texto, y parecía que el buscador
-  // estaba roto.
+  // Cada filtro lleva su número al lado: sin eso hay que ir tocándolos uno por uno para saber
+  // si tienen algo. El que queda vacío se muestra igual, apagado, así los botones no se mueven
+  // de lugar entre una hoja y otra.
+  const cajaFiltros = document.getElementById("cfgFiltros");
+  if (cajaFiltros) {
+    if (!CFG_FILTROS.some(x => x.id === cfgFiltroEstado)) cfgFiltroEstado = "todas";
+    cajaFiltros.innerHTML = CFG_FILTROS.map(x => {
+      const n = filas.filter(x.incluye).length;
+      return `<button class="cfg-filtro${x.id === cfgFiltroEstado ? " activo" : ""}` +
+             `${n === 0 ? " vacio" : ""}" onclick="cfgVerEstado('${x.id}')">` +
+             `${x.texto}<span class="cfg-filtro-n">${n}</span></button>`;
+    }).join("");
+  }
+
+  // Buscar mira SIEMPRE todas las cuentas de la hoja, sin importar el filtro elegido. Con el
+  // filtro por delante, buscar "sueldos" con todo configurado no devolvía nada: la cuenta
+  // existía pero quedaba descartada antes de comparar el texto.
   const filtro = cfgNorm(cfgFiltro);
+  const porEstado = CFG_FILTROS.find(x => x.id === cfgFiltroEstado) || CFG_FILTROS[CFG_FILTROS.length - 1];
   const visibles = filas.filter(f => {
     if (filtro) {
       return cfgNorm(`${f.cod} ${f.nom}`).includes(filtro) ||
-             f.rotulos.some(r => cfgNorm(r).includes(filtro));
+             f.rotulos.some(r => cfgNorm(r).includes(filtro)) ||
+             Object.values(f.porArchivo || {}).some(rs => rs.some(r => cfgNorm(r).includes(filtro)));
     }
-    return !(cfgSoloProblemas && f.estado === "ok");
+    return porEstado.incluye(f);
   });
+
+  // El pedazo que coincide con la búsqueda va marcado. Se ubica sobre el texto normalizado
+  // para que "vacaciones" también marque "Vacaciónes", y se corta sobre el original para no
+  // perder los acentos al mostrarlo.
+  const resaltar = (t) => {
+    const texto = String(t == null ? "" : t);
+    if (!filtro) return texto;
+    const i = cfgNorm(texto).indexOf(filtro);
+    if (i < 0 || cfgNorm(texto).length !== texto.length) return texto;
+    return `${texto.slice(0, i)}<mark>${texto.slice(i, i + filtro.length)}</mark>${texto.slice(i + filtro.length)}`;
+  };
 
   let html = "<table class='cfg'><thead><tr><th>Cuenta</th>" +
              `<th>Renglón de ${cfgHoja}</th><th></th></tr></thead><tbody>`;
@@ -341,29 +391,46 @@ function cfgPintar() {
           .map(a => `<span class="cfg-porarch"><b>${a.label}</b> · ${f.porArchivo[a.id].join(" + ") || "sin rótulo"}</span>`)
           .join("");
     } else {
-      rots = `<span class="cfg-rot">${f.rotulos.length ? f.rotulos.join(" + ") : "—"}` +
+      rots = `<span class="cfg-rot">${f.rotulos.length ? resaltar(f.rotulos.join(" + ")) : "—"}` +
              `${f.estado === "ok" ? "" : chip}</span>`;
     }
-    html += `<tr>` +
-      `<td><span class="mono">${f.cod}</span><span class="cfg-nom">${f.nom}</span></td>` +
+    const editando = cfgEditando === f.cod;
+    html += `<tr${editando ? ' class="cfg-abierta"' : ""}>` +
+      `<td><span class="mono">${resaltar(f.cod)}</span><span class="cfg-nom">${resaltar(f.nom)}</span></td>` +
       `<td>${rots}</td>` +
-      `<td><button class="cfg-btn" onclick="cfgElegir('${f.cod}')">Cambiar</button></td>` +
+      `<td><button class="cfg-btn" onclick="cfgElegir(${editando ? "null" : "'" + f.cod + "'"})">` +
+      `${editando ? "Cerrar" : "Cambiar"}</button></td>` +
       `</tr>`;
-    if (cfgEditando === f.cod) {
-      const opts = rotulos.map(r =>
-        `<option value="${r.replace(/"/g, "&quot;")}">${r}</option>`).join("");
+
+    if (editando) {
+      // Los rótulos que ya tienen cuentas van primero, con cuántas: en una lista de cien, el
+      // que se busca casi siempre es uno que ya está en uso, y los vacíos son los que sobran
+      // de limpiezas anteriores.
+      const usados = {};
+      filas.forEach(x => x.rotulos.forEach(r => { usados[cfgNorm(r)] = (usados[cfgNorm(r)] || 0) + 1; }));
+      const actual = cfgNorm(f.rotulos[0] || "");
+      const opts = rotulos
+        .map(r => ({ r, n: usados[cfgNorm(r)] || 0 }))
+        .sort((a, b) => (b.n - a.n) || a.r.localeCompare(b.r, "es"))
+        .map(x => `<option value="${x.r.replace(/"/g, "&quot;")}"` +
+                  `${cfgNorm(x.r) === actual ? " selected" : ""}>` +
+                  `${x.r}${x.n ? ` (${x.n})` : " — vacío"}</option>`)
+        .join("");
       html += `<tr class="cfg-editor"><td colspan="3">` +
-        `Mover <b>${f.nom}</b> a: <select id="cfgDestino">${opts}</select> ` +
-        `<button class="cfg-btn" onclick="cfgAplicar('${f.cod}')">Aplicar a los 4</button> ` +
+        `<div class="cfg-editor-caja">` +
+        `<span>Mover <b>${f.nom}</b> a</span>` +
+        `<select id="cfgDestino">${opts}</select>` +
+        `<button class="cfg-btn primario" onclick="cfgAplicar('${f.cod}')">Aplicar a los 4</button>` +
         `<button class="cfg-btn" onclick="cfgElegir(null)">Cancelar</button>` +
-        `</td></tr>`;
+        `</div></td></tr>`;
     }
   }
   html += "</tbody></table>";
+
   if (!visibles.length) {
     html = `<div class="cfg-vacio">${cfgFiltro
-      ? `Ninguna de las ${filas.length} cuentas coincide con «${cfgFiltro}».`
-      : `Todas las cuentas de ${cfgHoja} están configuradas. Marcá «Ver todas» para revisarlas.`}</div>`;
+      ? `Ninguna de las ${filas.length} cuentas de ${cfgHoja} coincide con «${cfgFiltro}».`
+      : `No hay cuentas en «${porEstado.texto}».`}</div>`;
   }
   cont.innerHTML = html;
 
@@ -410,8 +477,9 @@ function cfgAplicar(cod) {
   }
 }
 
-function cfgBuscar(v) { cfgFiltro = v; cfgPintar(); }
-function cfgVerTodas(v) { cfgSoloProblemas = !v; cfgPintar(); }
+function cfgBuscar(v) { cfgFiltro = v; cfgEditando = null; cfgPintar(); }
+
+function cfgVerEstado(id) { cfgFiltroEstado = id; cfgEditando = null; cfgPintar(); }
 
 async function guardarConfigCuentas() {
   if (!cfgCambios.length) return;
