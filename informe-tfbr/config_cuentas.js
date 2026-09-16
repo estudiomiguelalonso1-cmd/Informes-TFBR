@@ -50,7 +50,7 @@ let cfgHoja = "Anexo II";   // la solapa abierta
 // quedaron sin rótulo" o "cuáles difieren entre archivos", que son preguntas distintas y
 // llevan a acciones distintas.
 const CFG_FILTROS = [
-  { id: "sin",    texto: "Sin rótulo", incluye: (f) => f.estado === "sin" || f.estado === "fuera" },
+  { id: "sin",    texto: "Sin rótulo", incluye: (f) => f.estado === "sin" },
   { id: "varias", texto: "En varios",  incluye: (f) => f.estado === "varias" || f.estado === "difiere" },
   { id: "ok",     texto: "Con rótulo", incluye: (f) => f.estado === "ok" },
   { id: "todas",  texto: "Todas",      incluye: () => true },
@@ -124,18 +124,13 @@ function cfgEstadoDe(wb, hoja) {
   // el plan de centros de costo.
   const rubro = esAnexoII ? "4" : chRubroDeHoja(wb, layout, hoja, porFila);
 
+  // Todas las cuentas, en todas las hojas. Antes cada solapa mostraba sólo las de su rubro —el
+  // Activo las 1xx, el Pasivo las 2xx— y el Anexo II sólo las que el plan oficial marca con
+  // centros de costo. Eso es el programa decidiendo qué se puede configurar y qué no, que es
+  // justo lo que no tiene que hacer. La lista va agrupada por rubro y con el de la hoja
+  // primero, así lo habitual queda arriba sin esconder el resto.
   const porCuenta = {};
   for (const info of Object.values(porFila)) {
-    if (esAnexoII) {
-      // El Anexo II es la apertura del gasto por centro de costo: la lista la da el plan
-      // oficial, no lo que el archivo tenga cableado hoy.
-      if (!/^42/.test(info.cod)) continue;
-      if (!PLAN_CENTROS_COSTO.has(info.cod)) continue;
-    } else if (rubro) {
-      // Las demás abren su propio rubro. Una cuenta de gasto no va en el Activo, y listarla
-      // haría parecer que falta configurarla.
-      if (String(info.cod)[0] !== rubro) continue;
-    }
     const quien = lectores[info.fila] || [];
     porCuenta[info.cod] = {
       ...info,
@@ -209,8 +204,6 @@ function cfgVistaUnica(hoja = cfgHoja) {
   if (typeof PLAN_OFICIAL === "object") {
     for (const [cod, nom] of Object.entries(PLAN_OFICIAL)) {
       if (codigos.has(cod)) continue;
-      if (rubro && cfgRubroDe(cod) !== rubro) continue;
-      if (esAnexoIIHoja(hoja) && !PLAN_CENTROS_COSTO.has(cod)) continue;
       filas.push({
         cod, nom, estado: excluidas.has(cod) ? "excluida" : "fuera",
         porArchivo: {}, saldos: {}, rotulos: [], enArchivos: [], saldoMax: 0,
@@ -220,9 +213,15 @@ function cfgVistaUnica(hoja = cfgHoja) {
   // Y las que están en los archivos pero la persona marcó como que no van a ningún renglón.
   for (const f of filas) if (excluidas.has(f.cod)) f.estado = "excluida";
 
+  // Orden: primero el rubro de la hoja (en el Activo, las cuentas de activo), y dentro de cada
+  // rubro las que hay que revisar antes que las que ya están bien.
   const orden = { difiere: 0, varias: 1, sin: 2, ok: 3, fuera: 4, excluida: 5 };
-  filas.sort((a, b) => (orden[a.estado] - orden[b.estado]) ||
-                       (b.saldoMax - a.saldoMax) || a.cod.localeCompare(b.cod));
+  const pesoRubro = (cod) => (rubro && cfgRubroDe(cod) === rubro) ? 0 : 1;
+  filas.sort((a, b) =>
+    (pesoRubro(a.cod) - pesoRubro(b.cod)) ||
+    (cfgRubroDe(a.cod)).localeCompare(cfgRubroDe(b.cod)) ||
+    (orden[a.estado] - orden[b.estado]) ||
+    (b.saldoMax - a.saldoMax) || a.cod.localeCompare(b.cod));
 
   // los rótulos para elegir: los que están en TODOS los archivos
   const listas = ids.map(id => new Set(estados[id].rotulos.map(r => cfgNorm(r.rotulo))));
@@ -433,18 +432,16 @@ function cfgPintar() {
     if (!porRubro.has(d)) porRubro.set(d, []);
     porRubro.get(d).push(f);
   }
-  const rubrosOrdenados = [...porRubro.keys()].sort();
+  // En el orden en que quedaron las filas: el rubro de la hoja primero.
+  const rubrosOrdenados = [...porRubro.keys()];
 
   let html = "<table class='cfg'><thead><tr><th>Cuenta</th>" +
              `<th>Renglón de ${cfgHoja}</th><th></th></tr></thead><tbody>`;
 
   for (const d of rubrosOrdenados) {
     const delRubro = porRubro.get(d);
-    // El encabezado del rubro sólo tiene sentido si hay más de uno a la vista.
-    if (rubrosOrdenados.length > 1) {
-      html += `<tr class="cfg-rubro"><td colspan="3">` +
-              `${cfgNombreRubro(d)}<span class="cfg-rubro-n">${delRubro.length}</span></td></tr>`;
-    }
+    html += `<tr class="cfg-rubro"><td colspan="3">` +
+            `${cfgNombreRubro(d)}<span class="cfg-rubro-n">${delRubro.length}</span></td></tr>`;
 
     for (const f of delRubro) {
       const e = CFG_ESTADOS[f.estado];
