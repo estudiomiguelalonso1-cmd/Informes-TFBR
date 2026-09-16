@@ -194,11 +194,53 @@ function pfAvisoFaltaFilaMes(cuadro, mes, valor, motivo) {
   return msg + ".";
 }
 
+// La línea "DIFERENCIA DE CAMBIO" del plan: la que hace cerrar el balance en reales.
+//
+// Existe en los dos archivos en R$, no sólo en el Acumulado. Está justo después de la última
+// cuenta y entra en los subtotales de la hoja: lleva el importe en la columna acreedora y el
+// mismo número con el signo cambiado en la columna del saldo.
+//
+// Por qué hace falta. Las cuentas patrimoniales se convierten al tipo de cambio de cierre y las
+// de resultado vienen acumuladas a sus propios cambios: la diferencia entre los dos criterios es
+// exactamente la diferencia de cambio del período, y sin esta línea el balance en reales no
+// cierra. Antes cerraba solo porque todas las cuentas salían de debe menos haber en reales.
+function pfUbicarLineaDifCambio(ws, layout) {
+  for (let r = layout.planDeCuentas.hasta - 2; r < layout.stagingRange.filaDesde; r++) {
+    for (let c = 1; c <= 4; c++) {
+      const t = pfTexto(ws, r, c).trim();
+      if (/^diferencia\s+de\s+cambio$/i.test(t)) return { fila: r, colEtiqueta: c };
+    }
+  }
+  return null;
+}
+
+function pfEscribirLineaDifCambio(ws, layout, linea, valor, log) {
+  // Acreedora el importe, y la columna del saldo el mismo número con el signo cambiado, que es
+  // como está escrita la línea en los dos archivos.
+  ws.getCell(linea.fila, layout.acreedorCol).value = valor;
+  ws.getCell(linea.fila, layout.saldoCol).value = -valor;
+  log(`  Línea "DIFERENCIA DE CAMBIO" (fila ${linea.fila}): ${valor}.`);
+}
+
 // Escribe en el maestro lo que corresponda de este período. Devuelve qué escribió y qué no,
 // para que la pantalla lo muestre: un dato que no se pudo escribir tiene que quedar a la
 // vista como paso manual pendiente, no desaparecer.
+// La suma del cuadro de meses, leyendo las filas que tienen importe.
+function pfTotalDelCuadro(ws, cuadro) {
+  let total = 0, hubo = false;
+  for (const f of cuadro.filas) {
+    const v = ws.getCell(f.fila, cuadro.colValor).value;
+    const n = typeof v === "number" ? v
+      : (v && typeof v === "object" && typeof v.result === "number") ? v.result : null;
+    if (n === null) continue;
+    total += n; hubo = true;
+  }
+  return hubo ? total : null;
+}
+
 function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierre }, log = () => {}) {
   const ws = wb.getWorksheet("SALDOS");
+  const layout0 = derivarLayoutSaldos(wb);
   const [anioStr, mesStr] = String(periodo).split("-");
   const anio = parseInt(anioStr, 10);
   const mes = parseInt(mesStr, 10);
@@ -259,7 +301,33 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierr
     }
   }
 
-  return { hecho, pendiente, tieneTc: !!tc, tieneCuadro: !!cuadro };
+  // Y la línea del plan que hace cerrar el balance.
+  //
+  // Donde hay cuadro de meses, la línea lleva el ACUMULADO del año (la suma del cuadro), no el
+  // importe del mes: es lo que estaba escrito a mano y lo que el control de la propia planilla
+  // verifica. Donde no hay cuadro —el Mensual R$— lleva el importe del mes, que es lo que ese
+  // informe muestra.
+  const linea = pfUbicarLineaDifCambio(ws, layout0);
+  if (linea) {
+    const valorMes = ptNumeroTipeado(difCambioMes);
+    if (cuadro) {
+      const total = pfTotalDelCuadro(ws, cuadro);
+      if (total !== null) {
+        pfEscribirLineaDifCambio(ws, layout0, linea, total, log);
+        hecho.push(`Línea "DIFERENCIA DE CAMBIO" actualizada al acumulado del cuadro: ${total.toFixed(2)}`);
+      }
+    } else if (valorMes !== null) {
+      pfEscribirLineaDifCambio(ws, layout0, linea, valorMes, log);
+      hecho.push(`Línea "DIFERENCIA DE CAMBIO": ${valorMes}`);
+    } else {
+      pendiente.push(
+        `Falta la diferencia de cambio del mes. Sin ella la línea "DIFERENCIA DE CAMBIO" ` +
+        `(SALDOS fila ${linea.fila}) queda con la del mes pasado y el balance en reales no cierra.`
+      );
+    }
+  }
+
+  return { hecho, pendiente, tieneTc: !!tc, tieneCuadro: !!cuadro, tieneLinea: !!linea };
 }
 
 if (typeof module !== "undefined") {
@@ -274,6 +342,7 @@ if (typeof module !== "undefined") {
   global.ptNumeroTipeado = require("./parser_tfbr.js").ptNumeroTipeado;
   module.exports = {
     MESES_ES, ubicarTcCierre, ubicarCuadroDifCambio, escribirDatosDelPeriodo,
+    pfUbicarLineaDifCambio, pfTotalDelCuadro,
     pfAvisoFaltaFilaMes, pfColLetra, pfEtiquetaDelMes, pfInsertarFilaDelMes,
   };
 }

@@ -152,38 +152,31 @@ function agregarRenglonesFaltantes(wb, layout, archivoId, log = () => {}) {
   return { agregados, salteados };
 }
 
-// Un renglón con plata no puede estar oculto.
+// Ninguna fila oculta, en ninguna hoja.
 //
-// Muchas filas de estas plantillas están ocultas para no imprimir ceros, y eso está bien. Lo
-// que no está bien es que quede oculta una que SÍ tiene importe este mes: suma en el subtotal
-// pero no aparece en el informe, y así es como el préstamo de Cuba estuvo restando en el
-// Pasivo sin que se viera. Se corre al final, después de todas las inserciones: insertar filas
-// reacomoda las marcas de oculto y hacerlo antes no queda.
+// Las plantillas venían con filas escondidas para no imprimir ceros, y eso escondía cosas que
+// había que ver: el préstamo de Cuba restando en el Pasivo estuvo meses en una fila oculta, y
+// el renglón donde se juntan los adelantos al personal tampoco se veía. Un informe que esconde
+// renglones obliga a confiar en que lo escondido está bien.
+//
+// Se corre al final, después de todas las inserciones: insertar filas reacomoda las marcas de
+// oculto, así que hacerlo antes no queda.
 function mostrarRenglonesConImporte(wb, layout, planDeCuentas, escritas, log = () => {}) {
-  const conPlata = new Set();
-  for (const [cod, importe] of Object.entries(escritas || {})) {
-    if (Math.abs(importe) < 0.005) continue;
-    const info = planDeCuentas[cod];
-    if (!info) continue;
-    for (const f of [info].concat(info.otrasFilas || [])) conPlata.add(f.fila);
-  }
-  if (!conPlata.size) return [];
-
-  const mostrados = [];
+  const mostradas = [];
   for (const ws of wb.worksheets) {
-    if (ws.name === layout.sheet) continue;
-    const mapa = chMapaHoja(wb, layout, ws.name);
-    if (!mapa) continue;
-    for (const r of mapa.renglones) {
-      if (!r.filasSaldos.some(f => conPlata.has(f))) continue;
-      const fila = ws.getRow(r.fila);
-      if (!fila.hidden) continue;
-      fila.hidden = false;
-      mostrados.push({ hoja: ws.name, fila: r.fila, rotulo: r.rotulo });
-      log(`  ${ws.name} fila ${r.fila} ("${r.rotulo}"): estaba oculta y tiene importe; la dejé visible.`);
-    }
+    ws.eachRow({ includeEmpty: true }, (row, r) => {
+      if (!row.hidden) return;
+      row.hidden = false;
+      mostradas.push({ hoja: ws.name, fila: r });
+    });
   }
-  return mostrados;
+  if (mostradas.length) {
+    const porHoja = {};
+    mostradas.forEach(x => { porHoja[x.hoja] = (porHoja[x.hoja] || 0) + 1; });
+    log(`  Filas ocultas: se mostraron ${mostradas.length} (` +
+        Object.entries(porHoja).map(([h, n]) => `${h}: ${n}`).join(", ") + ").");
+  }
+  return mostradas;
 }
 
 // Que todo el bloque se vea parejo, no sólo las filas nuevas.

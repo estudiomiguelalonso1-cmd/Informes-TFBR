@@ -30,6 +30,46 @@ const ANEXO_I_RENGLONES = [
   { rotulo: "Rodados",          cuentas: ["1210700100"] },
 ];
 
+// Cuentas que el Anexo I lee y NO tendría que leer, porque ya las cuenta otra hoja.
+//
+// El Anexo I del Mensual $ tenía "I18 = +SALDOS!B159", que es 4212500000 AMORTIZACIONES — la
+// misma cuenta que el Anexo II ya toma como gasto. Contada dos veces: una llega al Activo por
+// el Anexo I y otra al resultado por el Anexo II, y el balance en pesos no cierra. Los otros
+// tres archivos no la tienen ahí; era una diferencia de ese archivo, no un criterio.
+//
+// Se busca por la cuenta que lee, no por la dirección: el motor inserta filas y la celda se
+// mueve. Si el archivo ya no la tiene, no hace nada.
+const ANEXO_I_A_QUITAR = [
+  { cuenta: "4212500000", porque: "el Anexo II ya la toma como gasto" },
+];
+
+// Saca del Anexo I las referencias que están de más. Devuelve qué sacó, para el log.
+function quitarDuplicadosAnexoI(wb, layout, log = () => {}) {
+  const ax = wb.getWorksheet("Anexo I");
+  if (!ax) return [];
+  const plan = leerPlanDeCuentas(wb, layout).cuentas;
+  const sacados = [];
+
+  for (const x of ANEXO_I_A_QUITAR) {
+    const cuenta = plan[x.cuenta];
+    if (!cuenta) continue;
+    const filas = [cuenta].concat(cuenta.otrasFilas || []).map(f => f.fila);
+    ax.eachRow({ includeEmpty: false }, (row, r) => {
+      row.eachCell({ includeEmpty: false }, (cell, c) => {
+        const v = cell.value;
+        if (!v || typeof v !== "object" || typeof v.formula !== "string") return;
+        for (const f of filas) {
+          if (!rtQuitarTermino(ax, cell.address, f)) continue;
+          sacados.push({ celda: cell.address, cuenta: x.cuenta, antes: v.formula });
+          log(`  Anexo I ${cell.address}: le saqué ${x.cuenta} — ${x.porque}, y acá se contaba ` +
+              `dos veces (era "${v.formula}").`);
+        }
+      });
+    });
+  }
+  return sacados;
+}
+
 function aiNorm(t) {
   return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
     .toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
@@ -83,6 +123,8 @@ function completarAnexoI(wb, layout, { escritas, cuentasAcumulado, campoSaldo },
   const ax = wb.getWorksheet("Anexo I");
   if (!ax) return { hechos: [], salteados: [], modo: null };
 
+  const duplicados = quitarDuplicadosAnexoI(wb, layout, log);
+
   const ubic = aiUbicar(ax);
   if (!ubic) {
     log("  ⚠ Anexo I: no ubiqué los renglones de bienes de uso; lo dejé como estaba.");
@@ -134,7 +176,7 @@ function completarAnexoI(wb, layout, { escritas, cuentasAcumulado, campoSaldo },
         `(valor de origen, columna ${ctColNumeroALetra(ubic.colOrigen)}).`);
   }
   for (const s of salteados) log(`  ⚠ Anexo I "${s.rotulo}": ${s.motivo}.`);
-  return { hechos, salteados, modo };
+  return { hechos, salteados, modo, duplicados };
 }
 
 if (typeof module !== "undefined") {
@@ -142,5 +184,8 @@ if (typeof module !== "undefined") {
   global.leerPlanDeCuentas = cfg.leerPlanDeCuentas;
   global.ctFormulaNetaAnexo = cfg.ctFormulaNetaAnexo;
   global.ctColNumeroALetra = cfg.ctColNumeroALetra;
-  module.exports = { ANEXO_I_RENGLONES, aiUbicar, completarAnexoI };
+  global.rtQuitarTermino = require("./rotulos_anexo.js").rtQuitarTermino;
+  module.exports = {
+    ANEXO_I_RENGLONES, ANEXO_I_A_QUITAR, aiUbicar, completarAnexoI, quitarDuplicadosAnexoI,
+  };
 }
