@@ -22,6 +22,32 @@ const App = {
   logLineas: [],
 };
 
+// La fecha de cierre que se carga en pantalla, en sus dos formas: el período (AAAA-MM), que es
+// lo que usan el historial y el motor, y el día, que es lo que va escrito en los encabezados.
+//
+// Antes se cargaba el período a mano como texto ("2026-07") y el día se daba por sentado: el
+// último del mes. Un cierre a mitad de mes no se podía expresar, y escribir el período a mano
+// se presta a tipear "2026-7" o "07-2026" y que no ande.
+function fechaDeCierre() {
+  const v = (document.getElementById("fechaCierreInput") || {}).value || "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim());
+  if (!m) return { periodo: "", dia: null, texto: "" };
+  return { periodo: `${m[1]}-${m[2]}`, dia: Number(m[3]), texto: `${m[3]}/${m[2]}/${m[1]}` };
+}
+
+function periodoElegido() { return fechaDeCierre().periodo; }
+
+// Debajo del campo se muestra qué período se va a cerrar, para que no haya dudas de que una
+// fecha del 30/09 cierra septiembre.
+function avisarPeriodo() {
+  const el = document.getElementById("periodoAviso");
+  if (!el) return;
+  const f = fechaDeCierre();
+  el.textContent = f.periodo
+    ? `Se cierra el período ${f.periodo} y los informes van a decir ${f.texto}.`
+    : "";
+}
+
 function mostrar(id, visible) {
   const el = document.getElementById(id);
   if (el) el.classList.toggle("hidden", !visible);
@@ -228,7 +254,7 @@ async function guardarAlta() {
 // ------------------------------------------------------------ carga del período
 
 function revisarListoParaProcesar() {
-  const periodo = document.getElementById("periodoInput").value.trim();
+  const periodo = periodoElegido();
   const tcCierre = document.getElementById("tcCierreInput").value.trim();
   const listo = /^\d{4}-\d{2}$/.test(periodo) && tcCierre !== "" &&
     App.cuentasExport.mensual && App.cuentasExport.acumulado;
@@ -262,7 +288,10 @@ async function onExportArchivo(periodo, ev) {
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("fileMensual")?.addEventListener("change", (e) => onExportArchivo("mensual", e));
   document.getElementById("fileAcumulado")?.addEventListener("change", (e) => onExportArchivo("acumulado", e));
-  document.getElementById("periodoInput")?.addEventListener("input", revisarListoParaProcesar);
+  document.getElementById("fechaCierreInput")?.addEventListener("input", () => {
+    avisarPeriodo();
+    revisarListoParaProcesar();
+  });
   document.getElementById("tcCierreInput")?.addEventListener("input", revisarListoParaProcesar);
   iniciar();
 });
@@ -303,7 +332,8 @@ async function procesarPeriodo() {
       // el TC de cierre y la cifra de dif de cambio solo existen en uno de los 4 archivos:
       // escribirDatosDelPeriodo se fija solo si este los tiene, y avisa lo que no pudo cargar
       const periodoDatos = escribirDatosDelPeriodo(wb, {
-        periodo: document.getElementById("periodoInput").value.trim(),
+        periodo: fechaDeCierre().periodo,
+        diaCierre: fechaDeCierre().dia,
         tcCierre: document.getElementById("tcCierreInput").value.trim(),
         difCambioMes: document.getElementById("difCambioInput").value.trim(),
       }, log);
@@ -723,7 +753,7 @@ async function cerrarMes() {
   mostrar("spinnerCierre", true);
   document.getElementById("btnCerrarMes").disabled = true;
   try {
-    const periodo = document.getElementById("periodoInput").value.trim();
+    const periodo = periodoElegido();
     const previo = await ghtLeerEstado();
     const estado = (previo && previo.estado) || { historial: [] };
     estado.periodoActual = periodo;
@@ -772,7 +802,7 @@ async function cerrarMes() {
 // mover la base de la que parte el mes que viene.
 async function confirmarInformes() {
   const btn = document.getElementById("btnConfirmarInformes");
-  const periodo = document.getElementById("periodoInput").value.trim();
+  const periodo = periodoElegido();
   if (!periodo) {
     estadoUi("confirmarStatus", "Falta el período: sin él no sé bajo qué nombre archivarlos.", "bad");
     return;

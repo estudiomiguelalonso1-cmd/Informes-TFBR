@@ -181,12 +181,12 @@ tbody tr:hover{background:var(--fondo-alto);}
 tr:last-child td{border-bottom:none;}
 .num{text-align:right; font-variant-numeric:tabular-nums;}
 
-select, input[type=text], input[type=password]{
+select, input[type=text], input[type=password], input[type=date]{
   font-family:inherit; padding:9px 11px; border-radius:var(--radio-chico);
   border:1px solid var(--borde-fuerte); font-size:13.5px; width:100%;
   background:var(--superficie); color:var(--tinta); transition:var(--transicion);
 }
-select:focus, input[type=text]:focus, input[type=password]:focus{
+select:focus, input[type=text]:focus, input[type=password]:focus, input[type=date]:focus{
   outline:none; border-color:var(--acento); box-shadow:0 0 0 3px rgba(15,107,92,.14);
 }
 .pending-row{background:#FBFAF4;}
@@ -626,3 +626,7 @@ table.cfg tr.cfg-rubro:hover td{background:transparent;}
 /* Una cuenta marcada como que no se usa se ve apagada, pero se sigue viendo. */
 table.cfg tr.cfg-apagada td{opacity:.55;}
 .cfg-chip.tenue{color:var(--tinta-suave); background:var(--fondo-alto); border-color:var(--borde);}
+
+/* El aviso que va debajo de un campo (qué período se cierra, por ejemplo) ocupa su propio
+   renglón: inline queda pegado al campo y se lee como si fuera parte de la etiqueta. */
+label > .footer-note{display:block; margin-top:6px;}

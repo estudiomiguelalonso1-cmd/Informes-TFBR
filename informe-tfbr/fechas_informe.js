@@ -111,9 +111,10 @@ function fiPeriodoActualDe(wb) {
 // Sólo se tocan las fechas del mes que el archivo trae como cierre: una fecha de otro mes o de
 // otro año es otra cosa (un dato histórico, una nota) y no se pisa.
 //
-// El día se conserva salvo que sea el último del mes: "del 01/07 al 31/07" tiene que pasar a
-// "del 01/08 al 31/08", así que el 1 sigue siendo 1 y el 31 pasa a ser el último día de agosto.
-function actualizarFechasDelInforme(wb, periodo, log = () => {}) {
+// El día se conserva salvo que sea el de cierre del mes viejo: "del 01/07 al 31/07" tiene que
+// pasar a "del 01/09 al 30/09", así que el 1 sigue siendo 1 y el 31 pasa a ser el día de cierre
+// del período nuevo.
+function actualizarFechasDelInforme(wb, periodo, log = () => {}, diaCierre = null) {
   const [anioStr, mesStr] = String(periodo || "").split("-");
   const anio = parseInt(anioStr, 10), mes = parseInt(mesStr, 10);
   if (!anio || !mes || mes < 1 || mes > 12) {
@@ -126,7 +127,10 @@ function actualizarFechasDelInforme(wb, periodo, log = () => {}) {
     return { cambiadas: [], yaEstaba: true, actual };
   }
 
-  const ultimoNuevo = fiUltimoDia(anio, mes);
+  // El día de cierre lo elige quien carga el período. Casi siempre es el último del mes, pero
+  // no tiene por qué: un cierre al 15 tiene que decir 15 en todos los encabezados. Si no se
+  // indica, se usa el último día, que es el comportamiento de siempre.
+  const ultimoNuevo = diaCierre ? Math.min(diaCierre, fiUltimoDia(anio, mes)) : fiUltimoDia(anio, mes);
   const ultimoViejo = fiUltimoDia(actual.anio, actual.mes);
   const cambiadas = [];
 

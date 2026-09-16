@@ -179,6 +179,10 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // filas reacomoda las marcas de oculto.
   const mostrados = mostrarRenglonesConImporte(wb, layout, planDeCuentas, escritas, log);
 
+  // Y que todo el bloque se vea parejo: las plantillas traen filas sin formato que, apenas
+  // reciben un importe y se muestran, salen con otra letra y el número sin separador de miles.
+  const formato = uniformarFormatoDeBloques(wb, layout, log);
+
   // Las que la persona marcó como que no van a ningún renglón no se denuncian: quedaron así
   // a propósito, y avisar todos los meses enseña a ignorar el aviso.
   const excluidas = cuentasExcluidas(configuracion);
@@ -250,6 +254,7 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       configurado,
       renglonesNuevos,
       renglonesMostrados: mostrados,
+      celdasEmparejadas: formato.length,
       prestamos,
       rangosExpandidos: rastreo.expandidos,
       rangosSalteados: rastreo.salteados,
@@ -287,6 +292,7 @@ if (typeof module !== "undefined") {
   global.cuentasExcluidas = cg.cuentasExcluidas;
   global.agregarRenglonesFaltantes = require("./renglones_faltantes.js").agregarRenglonesFaltantes;
   global.mostrarRenglonesConImporte = require("./renglones_faltantes.js").mostrarRenglonesConImporte;
+  global.uniformarFormatoDeBloques = require("./renglones_faltantes.js").uniformarFormatoDeBloques;
   global.consolidarPrestamos = require("./prestamos.js").consolidarPrestamos;
   global.cuentasSinDestino = rr.cuentasSinDestino;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };

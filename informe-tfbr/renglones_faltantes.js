@@ -186,6 +186,71 @@ function mostrarRenglonesConImporte(wb, layout, planDeCuentas, escritas, log = (
   return mostrados;
 }
 
+// Que todo el bloque se vea parejo, no sólo las filas nuevas.
+//
+// Las plantillas originales ya traían filas sin formato —casi todas ocultas, en cero— y eso se
+// nota en cuanto una de ellas recibe un importe y se muestra: queda con otra letra y el número
+// sin separador de miles, en el medio de un bloque prolijo. Se le copia el formato al vecino
+// con formato más cercano, mirando primero hacia arriba.
+//
+// Sólo se completa lo que está VACÍO: una celda que ya tiene fuente o formato de número se
+// respeta tal cual. Los totales en negrita, los títulos de sección y las columnas de porcentaje
+// del Anexo I están así a propósito, y emparejarlos sería romper el diseño en vez de arreglarlo.
+function uniformarFormatoDeBloques(wb, layout, log = () => {}) {
+  const emparejadas = [];
+
+  for (const ws of wb.worksheets) {
+    if (ws.name === layout.sheet) continue;
+    const mapa = chMapaHoja(wb, layout, ws.name);
+    if (!mapa || mapa.renglones.length < 2) continue;
+
+    const filas = mapa.renglones.map(r => r.fila).sort((a, b) => a - b);
+    const desde = filas[0], hasta = filas[filas.length - 1];
+    // Las columnas del bloque: la del rótulo y las de importe.
+    const cols = new Set(mapa.colsImporte);
+    for (const r of mapa.renglones) {
+      const c = chCeldaDelRotulo(ws, r.fila, r.cols.length ? r.cols[0].col : mapa.colsImporte[0]);
+      if (c) cols.add(c.col);
+    }
+
+    for (const col of cols) {
+      // El formato de referencia va arrastrándose fila por fila: así una celda vacía toma el de
+      // la última con formato que quedó arriba, que es la vecina de verdad y no una de otra
+      // sección diez filas más abajo.
+      let ultimoConFormato = null;
+      const pendientes = [];
+      for (let f = desde; f <= hasta; f++) {
+        const st = ws.getCell(f, col).style;
+        const tiene = st && (st.font || st.numFmt);
+        if (tiene) {
+          ultimoConFormato = st;
+          // Lo que venía sin formato arriba toma el primero que aparece hacia abajo.
+          for (const p of pendientes) {
+            ws.getCell(p, col).style = JSON.parse(JSON.stringify(st));
+            emparejadas.push({ hoja: ws.name, fila: p, col });
+          }
+          pendientes.length = 0;
+          continue;
+        }
+        if (ultimoConFormato) {
+          ws.getCell(f, col).style = JSON.parse(JSON.stringify(ultimoConFormato));
+          emparejadas.push({ hoja: ws.name, fila: f, col });
+        } else {
+          pendientes.push(f);            // todavía no vimos ninguna con formato
+        }
+      }
+    }
+  }
+
+  if (emparejadas.length) {
+    const porHoja = {};
+    emparejadas.forEach(x => { porHoja[x.hoja] = (porHoja[x.hoja] || 0) + 1; });
+    log(`  Formato: ${emparejadas.length} celda(s) sin formato tomaron el de su vecina (` +
+        Object.entries(porHoja).map(([h, n]) => `${h}: ${n}`).join(", ") + ").");
+  }
+  return emparejadas;
+}
+
 if (typeof module !== "undefined") {
   const ch = require("./config_hojas.js");
   global.chMapaHoja = ch.chMapaHoja;
@@ -197,6 +262,7 @@ if (typeof module !== "undefined") {
   global.ctColNumeroALetra = require("./config_tfbr.js").ctColNumeroALetra;
   module.exports = {
     RENGLONES_A_AGREGAR, agregarRenglonesFaltantes, crearRenglon, mostrarRenglonesConImporte,
+    uniformarFormatoDeBloques,
     rfSubtotalQueContiene, rfTotalQueSuma,
   };
 }

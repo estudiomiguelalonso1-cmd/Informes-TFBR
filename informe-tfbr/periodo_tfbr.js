@@ -104,8 +104,9 @@ function pfUltimoDiaDelMes(anio, mes) {
 // ("JULIO 01/07/2026-31/07/2026"). Se copia el espaciado alrededor del guión del último mes
 // en vez de fijarlo acá: la fila de acumulado usa " - " con espacios y los meses no, así que
 // el formato del cuadro es algo que se lee del archivo, no que se decide en el código.
-function pfEtiquetaDelMes(etiquetaModelo, anio, mes) {
-  const dd = String(pfUltimoDiaDelMes(anio, mes)).padStart(2, "0");
+function pfEtiquetaDelMes(etiquetaModelo, anio, mes, diaCierre) {
+  const ultimo = pfUltimoDiaDelMes(anio, mes);
+  const dd = String(diaCierre ? Math.min(diaCierre, ultimo) : ultimo).padStart(2, "0");
   const mm = String(mes).padStart(2, "0");
   const desde = `01/${mm}/${anio}`;
   const hasta = `${dd}/${mm}/${anio}`;
@@ -118,7 +119,7 @@ function pfEtiquetaDelMes(etiquetaModelo, anio, mes) {
 // Agrega la fila del mes al cuadro. Devuelve {ok:false, motivo} sin tocar nada cuando no se
 // puede hacer con seguridad — insertar una fila corre todo lo que está debajo, así que es
 // preferible dejarlo pendiente y avisar antes que mover algo que rompa los controles.
-function pfInsertarFilaDelMes(wb, ws, cuadro, anio, mes, valor, log) {
+function pfInsertarFilaDelMes(wb, ws, cuadro, anio, mes, valor, log, diaCierre) {
   if (!cuadro.filaAInsertar || !cuadro.ultimoMes) {
     return { ok: false, motivo: "no se pudo ubicar el último mes del cuadro" };
   }
@@ -143,7 +144,7 @@ function pfInsertarFilaDelMes(wb, ws, cuadro, anio, mes, valor, log) {
   const modificadas = insertRowEn(wb, layout.sheet, cuadro.filaAInsertar);
   // El mes nuevo del cuadro, con el formato del mes anterior (que la inserción corrió uno).
   copiarFormatoDeFila(ws, cuadro.filaAInsertar + 1, cuadro.filaAInsertar);
-  const etiqueta = pfEtiquetaDelMes(cuadro.ultimoMes.etiqueta, anio, mes);
+  const etiqueta = pfEtiquetaDelMes(cuadro.ultimoMes.etiqueta, anio, mes, diaCierre);
   ws.getCell(cuadro.filaAInsertar, cuadro.colEtiqueta).value = etiqueta;
   ws.getCell(cuadro.filaAInsertar, cuadro.colValor).value = valor;
   log(`  Explicación dif de cambio: fila nueva ${cuadro.filaAInsertar} "${etiqueta}" = ${valor} ` +
@@ -196,7 +197,7 @@ function pfAvisoFaltaFilaMes(cuadro, mes, valor, motivo) {
 // Escribe en el maestro lo que corresponda de este período. Devuelve qué escribió y qué no,
 // para que la pantalla lo muestre: un dato que no se pudo escribir tiene que quedar a la
 // vista como paso manual pendiente, no desaparecer.
-function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes }, log = () => {}) {
+function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierre }, log = () => {}) {
   const ws = wb.getWorksheet("SALDOS");
   const [anioStr, mesStr] = String(periodo).split("-");
   const anio = parseInt(anioStr, 10);
@@ -207,7 +208,7 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes }, log = 
   // Las fechas de todos los encabezados, en todas las hojas. Va primero porque la etiqueta del
   // tipo de cambio es una de ellas: si el TC se escribiera antes con su propia fecha, después
   // vendría el actualizador y la volvería a tocar, y el formato de cada archivo se perdería.
-  const fechas = actualizarFechasDelInforme(wb, periodo, log);
+  const fechas = actualizarFechasDelInforme(wb, periodo, log, diaCierre || null);
   if (fechas.cambiadas.length) {
     hecho.push(`${fechas.cambiadas.length} fecha(s) de encabezado actualizadas al cierre del período`);
   } else if (fechas.motivo) {
@@ -238,7 +239,7 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes }, log = 
       // debajo del último mes y arriba del acumulado semestral (ver pfCerrarCuadro). Si por
       // lo que sea no se puede hacer con seguridad, no se fuerza: queda el aviso con la
       // ubicación exacta para hacerlo a mano.
-      const ins = pfInsertarFilaDelMes(wb, ws, cuadro, anio, mes, valor, log);
+      const ins = pfInsertarFilaDelMes(wb, ws, cuadro, anio, mes, valor, log, diaCierre || null);
       if (ins.ok) {
         hecho.push(`Diferencia de cambio de ${ins.etiqueta}: ${valor} (fila ${ins.fila}, agregada al cuadro)`);
       } else {

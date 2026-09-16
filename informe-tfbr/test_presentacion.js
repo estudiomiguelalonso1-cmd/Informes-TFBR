@@ -82,44 +82,36 @@ function pinta(cell) {
     const otra = fi.actualizarFechasDelInforme(wb, PERIODO_NUEVO, () => {});
     if (otra.cambiadas.length) fallo(`una segunda pasada volvió a tocar ${otra.cambiadas.length} celda(s)`);
 
-    // 3. Las filas que el motor CREÓ tienen que verse como sus vecinas.
+    // 3. TODO el bloque parejo, no sólo las filas que creamos.
     //
-    //    Se miran sólo esas, no todas: las plantillas originales ya traen filas sin formato
-    //    —las ocultas que están en cero— y compararlas contra su vecina daría falsos avisos
-    //    sobre celdas que nadie tocó. Lo que hay que demostrar es que lo que agregamos nosotros
-    //    sale igual que el resto, no que la plantilla sea perfecta.
+    //    Las plantillas originales ya traían filas sin formato —casi todas ocultas, en cero— y
+    //    eso se nota apenas una recibe importe y se muestra: otra letra y el número sin
+    //    separador de miles en el medio de un bloque prolijo. Así que se revisa fila por fila
+    //    de cada bloque: ninguna puede quedar en blanco si su vecina tiene formato.
     const layout = cfg.derivarLayoutSaldos(wb);
-    const creadas = [];
-    const r = res.resumen;
-    for (const x of (r.renglonesNuevos ? r.renglonesNuevos.agregados : [])) creadas.push({ hoja: x.hoja, rotulo: x.rotulo });
-    for (const x of (r.prestamos ? r.prestamos.creados : [])) creadas.push({ hoja: "Activo", rotulo: x.rotulo });
-    for (const x of (r.configurado ? r.configurado.creados : [])) creadas.push({ hoja: x.hoja, rotulo: x.rotulo });
-    for (const x of (r.rotulosAgregados || [])) creadas.push({ hoja: "Anexo II", rotulo: x.rotulo });
-
     let revisadas = 0, sinFormato = 0;
-    for (const c of creadas) {
-      const mapa = ch.chMapaHoja(wb, layout, c.hoja);
-      if (!mapa) continue;
-      const reng = mapa.renglones.find(x => String(x.rotulo).trim() === String(c.rotulo).trim());
-      if (!reng || !reng.cols.length) continue;
-      // La vecina de arriba que también sea un renglón del bloque.
-      const vecina = mapa.renglones.filter(x => x.fila < reng.fila && x.cols.length).pop();
-      if (!vecina) continue;
-      const col = reng.cols[0].col;
-      const a = mapa.ws.getCell(vecina.fila, col), b = mapa.ws.getCell(reng.fila, col);
-      const vecinaConFormato = a.style && (a.style.font || a.style.numFmt);
-      if (!vecinaConFormato) continue;          // no hay contra qué comparar
-      revisadas++;
-      const sinNada = !b.style || (!b.style.font && !b.style.numFmt);
-      if (sinNada) {
-        sinFormato++;
-        fallo(`${c.hoja} fila ${reng.fila} ("${c.rotulo}") se creó sin formato: ` +
-              `vecina ${pinta(a)} vs esta ${pinta(b)}`);
+    for (const h of ch.chHojasConfigurables(wb, layout)) {
+      const mapa = ch.chMapaHoja(wb, layout, h.hoja);
+      if (!mapa || mapa.renglones.length < 2) continue;
+      const filas = mapa.renglones.map(x => x.fila).sort((a, b) => a - b);
+      const desde = filas[0], hasta = filas[filas.length - 1];
+      for (const col of mapa.colsImporte) {
+        let vistoConFormato = false;
+        for (let f = desde; f <= hasta; f++) {
+          const st = mapa.ws.getCell(f, col).style;
+          const tiene = st && (st.font || st.numFmt);
+          if (tiene) { vistoConFormato = true; continue; }
+          if (!vistoConFormato) continue;      // arriba todavía no había ninguna con formato
+          revisadas++; sinFormato++;
+          if (sinFormato <= 4) {
+            fallo(`${h.hoja} fila ${f} col ${col}: quedó sin formato y arriba hay filas con formato`);
+          }
+        }
+        revisadas++;
       }
     }
-    console.log(`   formato: ${creadas.length} renglón(es) creados por el sistema, ` +
-                `${revisadas} comparables con su vecino` +
-                (sinFormato ? `, ${sinFormato} SIN FORMATO` : ", todos con el mismo"));
+    console.log(`   formato: ${res.resumen.celdasEmparejadas || 0} celda(s) emparejadas; ` +
+                (sinFormato ? `quedan ${sinFormato} SIN FORMATO` : "no queda ninguna sin formato"));
   }
 
   console.log(fallas ? `\n✗ ${fallas} falla(s).` : "\n✓ Las 4 pasan: fechas al día y filas nuevas con el formato de sus vecinas.");
