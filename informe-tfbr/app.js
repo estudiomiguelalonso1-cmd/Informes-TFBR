@@ -471,6 +471,24 @@ function pintarResultado() {
             `${alta.repuntadas.length} referencia(s) a la fila nueva: ${alta.repuntadas.join(", ")}`
           : "") + `</span>`;
     }
+    // Plata de este mes que no llega a ninguna hoja. Se muestra arriba de todo lo demás y
+    // con el importe: es lo único del resumen que significa que falta plata en el informe.
+    if ((s.sinDestino || []).length) {
+      const suma = s.sinDestino.reduce((t, c) => t + c.importe, 0);
+      extra += `<div class="aviso-plata"><b>${s.sinDestino.length} cuenta(s) con ` +
+        `${suma.toFixed(2)} que ninguna hoja lee.</b> El importe entra en SALDOS —el balance ` +
+        `cierra igual— pero no llega a ningún estado.<ul>` +
+        s.sinDestino.map(c =>
+          `<li><span class="mono">${c.cod}</span> ${c.nom} — <b>${c.importe.toFixed(2)}</b></li>`
+        ).join("") + `</ul></div>`;
+    }
+    for (const r of (s.rangosExpandidos || [])) {
+      extra += `<br><span class="footer-note">✓ ${r.donde}: el rango ${r.rango} pasó a nombrar ` +
+        `sus ${r.cuentas} cuentas una por una.</span>`;
+    }
+    for (const r of (s.rangosSalteados || [])) {
+      extra += `<br><span class="footer-note">⚠ ${r.donde}: no expandí el rango — ${r.motivo}.</span>`;
+    }
     for (const se of (s.sinEnganchar || [])) {
       extra += `<br><span class="footer-note">⚠ <b>${se.clave}</b> quedó en SALDOS pero sin ` +
         `línea en el Anexo II: hay que agregarla a mano o su importe no llega al estado de ` +

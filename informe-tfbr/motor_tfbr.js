@@ -135,6 +135,20 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
 
   escribirStaging(wb, layout, matcheadas, log);
 
+  // Los rangos del plan pasan a nombrar sus cuentas una por una. Va DESPUÉS del alta: las
+  // cuentas que entran este mes todavía las levanta el rango como siempre, y recién después
+  // quedan fijadas. Al revés, una cuenta nueva que hoy el rango levanta se perdería sin avisar.
+  const rastreo = expandirRangosSaldos(wb, layout, log);
+
+  // Y con todo ya cableado, el control que faltaba: plata de este mes que no llega a ninguna
+  // hoja. Entra en los totales de SALDOS —el balance cierra igual— pero no está en ningún
+  // estado, y mirando el resultado no hay forma de darse cuenta.
+  const sinDestino = cuentasSinDestino(wb, layout, planDeCuentas, escritas);
+  for (const c of sinDestino) {
+    log(`  ⚠ ${c.cod} ${c.nom} tiene ${c.importe.toFixed(2)} y ninguna hoja la lee: ` +
+        `su importe no llega a ningún estado.`);
+  }
+
   // Una cuenta de resultado recien dada de alta que no quedo referenciada por ninguna linea
   // entra en los totales de SALDOS pero no en el Anexo II, y entonces el EERR no la cuenta.
   // No se inventa a que concepto va: se avisa.
@@ -190,6 +204,9 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       sinEnganchar: sinEnganchar.map(a => ({ codigo: a.codigo, clave: a.clave })),
       rotulosAuto,
       sinRotulo,
+      rangosExpandidos: rastreo.expandidos,
+      rangosSalteados: rastreo.salteados,
+      sinDestino,
       totalEscrito,
       totalExport,
     },
@@ -213,5 +230,8 @@ if (typeof module !== "undefined") {
   const cn = require("./cuentas_nuevas.js");
   global.aplicarRotulosGuardados = cn.aplicarRotulosGuardados;
   global.cuentasSinRotulo = cn.cuentasSinRotulo;
+  const rr = require("./rastreo_rangos.js");
+  global.expandirRangosSaldos = rr.expandirRangosSaldos;
+  global.cuentasSinDestino = rr.cuentasSinDestino;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }
