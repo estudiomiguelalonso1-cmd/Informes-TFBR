@@ -630,3 +630,6 @@ table.cfg tr.cfg-apagada td{opacity:.55;}
 /* El aviso que va debajo de un campo (qué período se cierra, por ejemplo) ocupa su propio
    renglón: inline queda pegado al campo y se lee como si fuera parte de la etiqueta. */
 label > .footer-note{display:block; margin-top:6px;}
+
+/* Un aviso que señala un dato que no se entiende. */
+.footer-note.aviso-mal{color:var(--mal); font-weight:600;}

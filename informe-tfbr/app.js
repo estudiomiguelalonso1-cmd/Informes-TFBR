@@ -48,6 +48,23 @@ function avisarPeriodo() {
     : "";
 }
 
+// Cómo se está entendiendo el tipo de cambio tipeado. Se muestra el número ya interpretado
+// para que no haya que descubrir en el resultado que una coma se leyó como separador de miles.
+function avisarTc() {
+  const el = document.getElementById("tcAviso");
+  if (!el) return;
+  const escrito = (document.getElementById("tcCierreInput") || {}).value || "";
+  if (!escrito.trim()) { el.textContent = ""; el.className = "footer-note"; return; }
+  const n = ptNumeroTipeado(escrito);
+  if (!n || n <= 0) {
+    el.textContent = `No entiendo "${escrito.trim()}". Escribilo como 291,3301 o 291.3301.`;
+    el.className = "footer-note aviso-mal";
+    return;
+  }
+  el.textContent = `Se va a usar ${n}.`;
+  el.className = "footer-note";
+}
+
 // Las dos librerías pesan 1,8 MB de los 2 MB de la página, y no hacen falta para mostrarla:
 // ExcelJS recién se usa al procesar y XLSX al leer el export. Cargarlas al abrir obligaba a
 // esperarlas en cada refresh aunque no se fuera a procesar nada.
@@ -339,6 +356,7 @@ async function onExportArchivo(periodo, ev) {
       const yaHabia = campo.value.trim();
       if (!yaHabia || Number(yaHabia) === parsed.tcCierre.valor) {
         campo.value = parsed.tcCierre.valor;
+        avisarTc();
         txt.textContent += ` · TC ${parsed.tcCierre.valor} tomado del archivo`;
       } else {
         txt.textContent += ` · ⚠ el archivo trae TC ${parsed.tcCierre.valor} y en pantalla ` +
@@ -359,6 +377,7 @@ async function onExportArchivo(periodo, ev) {
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("fileMensual")?.addEventListener("change", (e) => onExportArchivo("mensual", e));
   document.getElementById("fileAcumulado")?.addEventListener("change", (e) => onExportArchivo("acumulado", e));
+  document.getElementById("tcCierreInput")?.addEventListener("input", avisarTc);
   document.getElementById("fechaCierreInput")?.addEventListener("input", () => {
     avisarPeriodo();
     revisarListoParaProcesar();
@@ -373,10 +392,15 @@ async function procesarPeriodo() {
   App.logLineas = [];
   try {
     await cargarLibreria("exceljs");
-    const tcDelCierre = document.getElementById("tcCierreInput").value.trim();
-    if (!tcDelCierre) {
-      throw new Error("Falta el tipo de cambio de cierre: sin él no se puede calcular el " +
-                      "saldo en reales de las cuentas de activo, pasivo y patrimonio.");
+    // Se acepta "291,3301" y "291.3301": el TC se tipea con coma decimal y Number() de eso da
+    // NaN, así que el cierre frenaba diciendo que faltaba el dato con el número en la pantalla.
+    const escrito = document.getElementById("tcCierreInput").value.trim();
+    const tcDelCierre = ptNumeroTipeado(escrito);
+    if (!tcDelCierre || tcDelCierre <= 0) {
+      throw new Error(escrito
+        ? `No entiendo el tipo de cambio "${escrito}". Escribilo como 291,3301 o 291.3301.`
+        : "Falta el tipo de cambio de cierre: sin él no se puede calcular el saldo en reales " +
+          "de las cuentas de activo, pasivo y patrimonio.");
     }
     for (const a of ARCHIVOS_TFBR) {
       log(`\n=== ${a.label} ===`);

@@ -200,6 +200,46 @@ function parseSumasYSaldosTFBR(filas, merges) {
   };
 }
 
+// Un número escrito a mano, en cualquiera de las dos formas que se usan acá.
+//
+// El tipo de cambio se tipea como "291,3301" —coma decimal, que es como se escribe en
+// Argentina— y Number() de eso da NaN. El sistema lo tomaba como que faltaba el dato y frenaba
+// el cierre diciendo "falta el tipo de cambio" con el número a la vista en la pantalla.
+//
+// Cuál es el separador decimal se decide por el ÚLTIMO que aparece: "1.234,56" es mil
+// doscientos treinta y cuatro con cincuenta y seis, y "1,234.56" también. Lo que queda antes
+// son separadores de miles y se borran. Con un solo separador y exactamente tres dígitos
+// detrás ("1.234") no hay forma de saberlo mirando el número, así que se toma como miles, que
+// es lo que significa cuando alguien lo escribe así.
+function ptNumeroTipeado(texto) {
+  const t = String(texto == null ? "" : texto).trim().replace(/\s/g, "");
+  if (!t) return null;
+  if (!/[\d]/.test(t)) return null;
+
+  const ultimaComa = t.lastIndexOf(",");
+  const ultimoPunto = t.lastIndexOf(".");
+  let limpio;
+
+  if (ultimaComa >= 0 && ultimoPunto >= 0) {
+    const dec = ultimaComa > ultimoPunto ? "," : ".";
+    const miles = dec === "," ? "." : ",";
+    limpio = t.split(miles).join("").replace(dec, ".");
+  } else if (ultimaComa >= 0 || ultimoPunto >= 0) {
+    const sep = ultimaComa >= 0 ? "," : ".";
+    const partes = t.split(sep);
+    const detras = partes[partes.length - 1].length;
+    // Varios separadores, o uno con tres dígitos detrás: son miles.
+    limpio = (partes.length > 2 || detras === 3)
+      ? partes.join("")
+      : partes.slice(0, -1).join("") + "." + partes[partes.length - 1];
+  } else {
+    limpio = t;
+  }
+
+  const n = Number(limpio);
+  return isFinite(n) ? n : null;
+}
+
 // Redondeo a centavos, como lo hace la planilla: el medio centavo va para afuera del cero,
 // no al par más cercano. Con Math.round a secas, -0.005 daría -0.00 y 0.005 daría 0.01, y los
 // negativos quedarían un centavo corridos respecto del reporte.
@@ -226,7 +266,7 @@ function ptRedondearCentavos(x) {
 // Verificado contra el export de agosto de 2026 ya convertido por contaduría: las 144 cuentas
 // de los dos archivos dan igual al centavo.
 function convertirSaldosEnReales(cuentas, tipoDeCambio) {
-  const tc = Number(tipoDeCambio);
+  const tc = typeof tipoDeCambio === "number" ? tipoDeCambio : ptNumeroTipeado(tipoDeCambio);
   if (!tc || !isFinite(tc) || tc <= 0) {
     throw new Error(
       "Falta el tipo de cambio de cierre: sin él no se puede calcular el saldo en reales de " +
@@ -251,7 +291,7 @@ function capituloDeCodigoTFBR(codigo) {
 if (typeof module !== "undefined") {
   module.exports = {
     parseSumasYSaldosTFBR, capituloDeCodigoTFBR, ptUbicarColumna, ptBuscarTcCierre,
-    convertirSaldosEnReales, ptRedondearCentavos,
+    convertirSaldosEnReales, ptRedondearCentavos, ptNumeroTipeado,
     CAPITULOS_TFBR, CAPITULO_POR_DIGITO_TFBR,
   };
 }

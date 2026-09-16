@@ -220,7 +220,8 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierr
   if (tc && tcCierre !== null && tcCierre !== undefined && tcCierre !== "") {
     // Sólo el número. La etiqueta con la fecha ya la actualizó actualizarFechasDelInforme,
     // respetando el formato que usa cada archivo ("31/7/26" en uno, "31/07/2026" en otro).
-    ws.getCell(tc.filaEtiqueta, tc.colValor).value = Number(tcCierre);
+    // El TC se tipea con coma decimal ("291,3301"): Number() de eso da NaN y escribía basura.
+    ws.getCell(tc.filaEtiqueta, tc.colValor).value = ptNumeroTipeado(tcCierre);
     hecho.push(`TC de cierre ${tcCierre} escrito en SALDOS`);
     log(`  TC de cierre: ${tcCierre}.`);
   }
@@ -228,8 +229,7 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierr
   const cuadro = ubicarCuadroDifCambio(ws);
   if (cuadro) {
     const fila = cuadro.filas.find(f => f.mes === mes);
-    const valor = difCambioMes === "" || difCambioMes === null || difCambioMes === undefined
-      ? null : Number(difCambioMes);
+    const valor = ptNumeroTipeado(difCambioMes);
     if (fila && valor !== null) {
       ws.getCell(fila.fila, cuadro.colValor).value = valor;
       hecho.push(`Diferencia de cambio de ${fila.etiqueta}: ${valor}`);
@@ -271,6 +271,7 @@ if (typeof module !== "undefined") {
   global.copiarFormatoDeFila = fh.copiarFormatoDeFila;
   global.derivarLayoutSaldos = cfg.derivarLayoutSaldos;
   global.actualizarFechasDelInforme = require("./fechas_informe.js").actualizarFechasDelInforme;
+  global.ptNumeroTipeado = require("./parser_tfbr.js").ptNumeroTipeado;
   module.exports = {
     MESES_ES, ubicarTcCierre, ubicarCuadroDifCambio, escribirDatosDelPeriodo,
     pfAvisoFaltaFilaMes, pfColLetra, pfEtiquetaDelMes, pfInsertarFilaDelMes,
