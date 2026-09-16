@@ -1,14 +1,17 @@
-// Prueba de la consolidación de préstamos, contra los 4 maestros y el export de julio.
+// Prueba de los préstamos al personal, contra los 4 maestros y el export de julio.
 //
-// Lo que tiene que quedar demostrado, después de correr el motor:
-//   1. Ningún renglón del Pasivo lee una cuenta de préstamo. Son cuentas 114 —de activo— y
-//      en el Pasivo entraban restando: Cuba tiene 200.000 deudor y el Pasivo mostraba
-//      -200.000. Se compensaba con el Activo, el balance cerraba, y encima la fila está
-//      oculta, así que no había forma de verlo.
-//   2. Cada préstamo que el archivo tiene en su plan está en "- Adelanto al personal".
-//   3. Ese renglón existe con el mismo nombre en los cuatro, y no está oculto — si queda
-//      oculto el importe entra en el subtotal pero no se ve.
-//   4. Ningún préstamo queda leído dos veces.
+// Lo que tiene que quedar demostrado:
+//   1. Ninguno en el Pasivo. Son cuentas 114 —de activo— y en el Pasivo entraban restando:
+//      Cuba tiene 200.000 deudor y el Pasivo mostraba -200.000. Se compensaba con el Activo,
+//      el balance cerraba, y la fila está oculta, así que no había forma de verlo.
+//   2. Cada préstamo en SU renglón, con el mismo nombre exacto en los cuatro. No agrupados:
+//      los Acumulados los metían todos en "Adelanto al personal" y así no se pueden comparar
+//      contra los Mensuales, que los abren uno por uno.
+//   3. Los seis renglones existen en los cuatro archivos, incluso donde la cuenta todavía no
+//      está en el plan — si no, el día que el sumas la traiga no habría dónde ponerla.
+//   4. Ninguno leído dos veces.
+//   5. El que tiene importe este mes, visible. Un renglón oculto suma en el subtotal pero no
+//      sale en el informe.
 //
 // Correr con: node informe-tfbr/test_prestamos.js
 
@@ -47,69 +50,72 @@ function leerExport(periodo) {
   for (const m of MAESTROS) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(path.join(__dirname, m.archivo));
-    motor.procesarMaestroTFBR({
+    const res = motor.procesarMaestroTFBR({
       wb, cuentasExport: ex[m.periodo], campoSaldo: m.campo, archivoId: m.id,
       cuentasAcumulado: ex.acumulado, log: () => {},
     });
 
     const layout = cfg.derivarLayoutSaldos(wb);
     const plan = ch.chPlanPorFila(wb, layout);
-    const enPlan = pr.PRESTAMOS_AL_PERSONAL.filter(c =>
-      Object.values(plan).some(x => x.cod === c));
+    const porCodigo = {};
+    for (const x of Object.values(plan)) porCodigo[x.cod] = x;
 
-    // Dónde quedó cada préstamo, hoja por hoja.
-    const lugares = {};       // cod -> [ "Hoja: rotulo" ]
-    for (const c of enPlan) lugares[c] = [];
+    // Dónde quedó cada préstamo.
+    const lugares = {};
+    for (const p of pr.PRESTAMOS_AL_PERSONAL) lugares[p.cuenta] = [];
     for (const h of ch.chHojasConfigurables(wb, layout)) {
       const mapa = ch.chMapaHoja(wb, layout, h.hoja);
       for (const r of mapa.renglones) {
         for (const f of r.filasSaldos) {
           const info = plan[f];
-          if (info && lugares[info.cod]) lugares[info.cod].push(`${h.hoja}: "${r.rotulo}"`);
+          if (info && lugares[info.cod]) lugares[info.cod].push({ hoja: h.hoja, rotulo: r.rotulo, fila: r.fila });
         }
       }
     }
 
-    console.log(`\n== ${m.label} — ${enPlan.length} préstamo(s) en el plan`);
-
-    // 1. Ninguno en el Pasivo.
-    for (const [cod, sitios] of Object.entries(lugares)) {
-      const enPasivo = sitios.filter(s => /^Pasivo/.test(s));
-      if (enPasivo.length) {
-        fallo(`${cod} sigue en el Pasivo: ${enPasivo.join(", ")} — es una cuenta de activo`);
-      }
-    }
-
-    // 2. Cada uno en "- Adelanto al personal".
-    for (const cod of enPlan) {
-      const bien = lugares[cod].some(s =>
-        ch.chNorm(s) === ch.chNorm(`${pr.PR_ROTULO}`.replace(/^-\s*/, "")) ||
-        s.indexOf(pr.PR_ROTULO) >= 0);
-      if (!bien) fallo(`${cod} no quedó en "${pr.PR_ROTULO}" (está en: ${lugares[cod].join(", ") || "ningún renglón"})`);
-    }
-
-    // 3. El renglón existe, se llama igual en los cuatro, y se ve.
     const mapaActivo = ch.chMapaHoja(wb, layout, "Activo");
-    const destino = mapaActivo && mapaActivo.renglones.find(r => ch.chNorm(r.rotulo) === ch.chNorm(pr.PR_ROTULO));
-    if (!destino) {
-      fallo(`no existe el renglón "${pr.PR_ROTULO}" en el Activo`);
-    } else {
-      if (wb.getWorksheet("Activo").getRow(destino.fila).hidden) {
-        fallo(`el renglón "${pr.PR_ROTULO}" quedó oculto: el importe entra en el subtotal pero no se ve`);
+    const enPlan = pr.PRESTAMOS_AL_PERSONAL.filter(p => porCodigo[p.cuenta]);
+    console.log(`\n== ${m.label} — ${enPlan.length} de ${pr.PRESTAMOS_AL_PERSONAL.length} préstamos en el plan`);
+
+    for (const p of pr.PRESTAMOS_AL_PERSONAL) {
+      // 3. El renglón existe, con el nombre exacto.
+      const reng = mapaActivo && mapaActivo.renglones.find(x => String(x.rotulo).trim() === p.rotulo);
+      if (!reng) { fallo(`falta el renglón "${p.rotulo}" en el Activo`); continue; }
+
+      if (!porCodigo[p.cuenta]) { console.log(`     ${p.rotulo} — renglón listo (la cuenta aún no está en el plan)`); continue; }
+
+      const sitios = lugares[p.cuenta];
+
+      // 1. Ninguno en el Pasivo.
+      const enPasivo = sitios.filter(s => s.hoja === "Pasivo");
+      if (enPasivo.length) {
+        fallo(`${p.cuenta} sigue en el Pasivo: ${enPasivo.map(s => `"${s.rotulo}"`).join(", ")} — es una cuenta de activo`);
       }
-      console.log(`   "${pr.PR_ROTULO}" en Activo fila ${destino.fila}, visible`);
-    }
 
-    // 4. Ninguno leído dos veces.
-    for (const [cod, sitios] of Object.entries(lugares)) {
-      if (sitios.length > 1) fallo(`${cod} lo leen ${sitios.length} renglones: ${sitios.join(", ")}`);
-    }
+      // 2. En SU renglón.
+      const bien = sitios.some(s => s.hoja === "Activo" && String(s.rotulo).trim() === p.rotulo);
+      if (!bien) {
+        fallo(`${p.cuenta} no quedó en "${p.rotulo}" (está en: ` +
+              `${sitios.map(s => `${s.hoja} "${s.rotulo}"`).join(", ") || "ningún renglón"})`);
+      }
 
-    for (const cod of enPlan) {
-      console.log(`     ${cod} -> ${lugares[cod].join(", ") || "SIN RENGLÓN"}`);
+      // 4. Una sola vez.
+      if (sitios.length > 1) {
+        fallo(`${p.cuenta} lo leen ${sitios.length} renglones: ${sitios.map(s => `${s.hoja} "${s.rotulo}"`).join(", ")}`);
+      }
+
+      // 5. Con importe, visible.
+      const importe = res.escritas[p.cuenta];
+      const oculto = wb.getWorksheet("Activo").getRow(reng.fila).hidden;
+      if (importe !== undefined && Math.abs(importe) > 0.005 && oculto) {
+        fallo(`"${p.rotulo}" tiene ${importe.toFixed(2)} y la fila quedó oculta: suma en el subtotal pero no sale en el informe`);
+      }
+      console.log(`     ${p.rotulo.padEnd(28)} fila ${String(reng.fila).padStart(3)}` +
+                  (importe !== undefined && Math.abs(importe) > 0.005 ? `  ${importe.toFixed(2)}` : "  (sin importe)") +
+                  (oculto ? "  [oculta]" : ""));
     }
   }
 
-  console.log(fallas ? `\n✗ ${fallas} falla(s).` : "\n✓ Las 4 pasan: los préstamos van juntos en el Activo y ninguno quedó en el Pasivo.");
+  console.log(fallas ? `\n✗ ${fallas} falla(s).` : "\n✓ Las 4 pasan: cada préstamo en su renglón del Activo, ninguno en el Pasivo.");
   process.exit(fallas ? 1 : 0);
 })();

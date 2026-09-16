@@ -151,6 +151,9 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // Pasivo — son cuentas 114, de activo, y en el Pasivo entraban restando.
   const prestamos = consolidarPrestamos(wb, layout, log);
 
+  // Los renglones que le faltan a este archivo y alguna cuenta necesita.
+  const renglonesNuevos = agregarRenglonesFaltantes(wb, layout, archivoId, log);
+
   // Cuentas que van a un renglón decidido con contaduría, esté donde estén hoy. Va DESPUÉS de
   // consolidar los préstamos: en dos archivos el renglón "- Adelanto al personal" no existía
   // con ese nombre y lo crea ese paso, así que corriendo antes no había dónde mandarlas.
@@ -162,6 +165,10 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // Y con todo ya cableado, el control que faltaba: plata de este mes que no llega a ninguna
   // hoja. Entra en los totales de SALDOS —el balance cierra igual— pero no está en ningún
   // estado, y mirando el resultado no hay forma de darse cuenta.
+  // Lo último: que no quede oculto ningún renglón con importe. Va al final porque insertar
+  // filas reacomoda las marcas de oculto.
+  const mostrados = mostrarRenglonesConImporte(wb, layout, planDeCuentas, escritas, log);
+
   const sinDestino = cuentasSinDestino(wb, layout, planDeCuentas, escritas);
   for (const c of sinDestino) {
     log(`  ⚠ ${c.cod} ${c.nom} tiene ${c.importe.toFixed(2)} y ninguna hoja la lee: ` +
@@ -226,6 +233,8 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       anexoI,
       renglonesRenombrados: renombres,
       asignaciones,
+      renglonesNuevos,
+      renglonesMostrados: mostrados,
       prestamos,
       rangosExpandidos: rastreo.expandidos,
       rangosSalteados: rastreo.salteados,
@@ -258,6 +267,8 @@ if (typeof module !== "undefined") {
   global.completarAnexoI = require("./anexo_i.js").completarAnexoI;
   global.aplicarRenombresRenglon = require("./config_hojas.js").aplicarRenombresRenglon;
   global.aplicarAsignaciones = require("./config_hojas.js").aplicarAsignaciones;
+  global.agregarRenglonesFaltantes = require("./renglones_faltantes.js").agregarRenglonesFaltantes;
+  global.mostrarRenglonesConImporte = require("./renglones_faltantes.js").mostrarRenglonesConImporte;
   global.consolidarPrestamos = require("./prestamos.js").consolidarPrestamos;
   global.cuentasSinDestino = rr.cuentasSinDestino;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };

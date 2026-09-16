@@ -1,12 +1,12 @@
-// Los préstamos al personal, en un solo renglón del Activo, igual en los cuatro archivos.
+// Los préstamos al personal: cada uno en su renglón, con el mismo nombre en los cuatro.
 //
-// Qué estaba pasando. Las seis cuentas de préstamo son 114xxxxxxx — todas de ACTIVO, son
-// plata que la empresa prestó, no que debe. Pero cada archivo las trataba distinto:
+// Las seis cuentas de préstamo son 114xxxxxxx — todas de ACTIVO: es plata que la empresa
+// prestó, no que debe. Cada archivo las trataba distinto, y dos las tenían en el PASIVO:
 //
-//   Mensual $     cuatro renglones sueltos en el Activo (Paccielo, Velasco, Alves, Cuba)
-//   Mensual R$    cuatro renglones sueltos, y Carlos Furlong en el PASIVO
-//   Acumulado $   agrupadas en "Adelanto al personal", y Cuba y Furlong también en el PASIVO
-//   Acumulado R$  agrupadas en "Prestamos al personal", y Cuba y Vera también en el PASIVO
+//   Mensual $     renglones sueltos en el Activo (Paccielo, Velasco, Alves, Cuba)
+//   Mensual R$    renglones sueltos, y Carlos Furlong en el PASIVO
+//   Acumulado $   todas juntas en "Adelanto al personal", y Cuba y Furlong en el PASIVO
+//   Acumulado R$  todas juntas en "Prestamos al personal", y Cuba y Vera en el PASIVO
 //
 // Los renglones del Pasivo son el problema de fondo: los alimenta una cuenta de activo, así
 // que el importe entra restando. Cuba tiene saldo deudor de 200.000 y el Pasivo mostraba
@@ -15,49 +15,58 @@
 //
 // Y los rótulos estaban cruzados: el renglón "Préstamo Lorena Alves" del Pasivo sumaba
 // PRESTAMO CUBA, y el "Prestamo Carlos Furlong" del Acumulado R$ sumaba PRESTAMO VERA.
-// Renombrarlos no alcanzaba: dejaba a la otra cuenta sin renglón.
 //
-// Qué hace esto. Manda las seis al renglón "- Adelanto al personal" del Activo, en los cuatro,
-// y las saca del Pasivo. El renglón de destino se deja visible: si queda oculto, el importe
-// entra en el subtotal pero no se ve, que es como empezó todo esto.
+// Qué hace esto. Le da a cada préstamo su propio renglón en el Activo, con el mismo nombre en
+// los cuatro archivos, creándolo donde no exista, y los saca del Pasivo. Juntarlos todos en
+// "Adelanto al personal" —como estaban los Acumulados— haría que los informes no se puedan
+// comparar contra los Mensuales, que los abren uno por uno.
+//
+// El orden importa: se crean en el orden de la lista, cada uno después del anterior, así los
+// cuatro archivos terminan con los seis renglones en la misma secuencia.
 
 const PRESTAMOS_AL_PERSONAL = [
-  "1140600300",   // PRESTAMO A. VELASCO
-  "1140600700",   // PRESTAMO CARLOS FURLONG
-  "1140601100",   // PRESTAMO LORENA ALVES
-  "1140601300",   // PRESTAMO CUBA
-  "1140601400",   // PRESTAMO VERA
-  "1140601500",   // PRESTAMO PACCIELO
+  { cuenta: "1140600300", rotulo: "- Préstamo A Velasco" },
+  { cuenta: "1140600700", rotulo: "- Préstamo Carlos Furlong" },
+  { cuenta: "1140601100", rotulo: "- Préstamo Lorena Alves" },
+  { cuenta: "1140601300", rotulo: "- Préstamo Cuba" },
+  { cuenta: "1140601400", rotulo: "- Préstamo Vera" },
+  { cuenta: "1140601500", rotulo: "- Préstamo Paccielo" },
 ];
 
-const PR_ROTULO = "- Adelanto al personal";
-const PR_HOJA_DESTINO = "Activo";
+const PR_HOJA = "Activo";
 const PR_HOJAS_A_LIMPIAR = ["Pasivo"];
 
-// El renglón que va a juntarlos. Si el archivo ya tiene uno con ese nombre, ese; si no, se
-// renombra el primero que hoy lee un préstamo. No se inserta una fila nueva: los cuatro
-// archivos ya tienen dónde, sólo que con nombres distintos ("Prestamos al personal" en los
-// R$), y meter filas mueve todas las fórmulas de abajo sin necesidad.
-function prRenglonDestino(wb, layout, plan, log) {
-  const mapa = chMapaHoja(wb, layout, PR_HOJA_DESTINO);
-  if (!mapa) return null;
+// Dónde arranca el bloque de préstamos si el archivo no tiene ninguno todavía. Son renglones
+// de "otros créditos", así que van con los adelantos. Se prueban varios porque no todos los
+// archivos tienen los mismos.
+const PR_ANCLAS = ["- Adelanto al personal", "- Prestamos al personal", "- Adelantos PDT"];
 
-  const yaEsta = mapa.renglones.find(r => chNorm(r.rotulo) === chNorm(PR_ROTULO));
-  if (yaEsta) return { mapa, renglon: yaEsta, renombrado: null };
-
-  const filasPrestamo = PRESTAMOS_AL_PERSONAL
-    .map(c => plan[c] && plan[c].fila).filter(Boolean);
-  const candidato = mapa.renglones.find(r => r.filasSaldos.some(f => filasPrestamo.includes(f)));
-  if (!candidato) return null;
-
-  const celda = chCeldaDelRotulo(mapa.ws, candidato.fila, candidato.cols[0].col);
-  if (!celda) return null;
-  const antes = candidato.rotulo;
-  mapa.ws.getCell(celda.fila, celda.col).value = PR_ROTULO;
-  candidato.rotulo = PR_ROTULO;
-  log(`  ${PR_HOJA_DESTINO} fila ${candidato.fila}: "${antes}" pasa a llamarse "${PR_ROTULO}" ` +
-      `para que los cuatro archivos junten los préstamos en el mismo renglón.`);
-  return { mapa, renglon: candidato, renombrado: antes };
+function prNormalizarNombres(wb, layout, plan, log) {
+  // Un renglón que ya lee la cuenta pero se llama distinto se renombra, en vez de crear otro:
+  // si no, el archivo terminaría con "- Prestamo Velasco" vacío y "- Préstamo A Velasco" al lado.
+  const mapa = chMapaHoja(wb, layout, PR_HOJA);
+  if (!mapa) return [];
+  const hechos = [];
+  for (const p of PRESTAMOS_AL_PERSONAL) {
+    const cuenta = plan[p.cuenta];
+    if (!cuenta) continue;
+    const filas = [cuenta].concat(cuenta.otrasFilas || []).map(f => f.fila);
+    const reng = mapa.renglones.find(r => r.filasSaldos.some(f => filas.includes(f)));
+    if (!reng || !reng.rotulo) continue;
+    if (String(reng.rotulo).trim() === p.rotulo) continue;   // texto exacto: ver config_hojas
+    // Sólo si ese renglón es de ESE préstamo y de nada más. El renglón agrupado de los
+    // Acumulados ("Adelanto al personal") lee varias cuentas y no se puede renombrar.
+    if (reng.filasSaldos.length > 1) continue;
+    if (mapa.renglones.some(r => r !== reng && String(r.rotulo).trim() === p.rotulo)) continue;
+    const celda = chCeldaDelRotulo(mapa.ws, reng.fila, reng.cols[0].col);
+    if (!celda) continue;
+    const antes = reng.rotulo;
+    mapa.ws.getCell(celda.fila, celda.col).value = p.rotulo;
+    reng.rotulo = p.rotulo;
+    hechos.push({ de: antes, a: p.rotulo, fila: reng.fila });
+    log(`  ${PR_HOJA} fila ${reng.fila}: "${antes}" pasa a llamarse "${p.rotulo}".`);
+  }
+  return hechos;
 }
 
 function prVaciarEnHoja(wb, layout, nombreHoja, filas) {
@@ -75,21 +84,15 @@ function prVaciarEnHoja(wb, layout, nombreHoja, filas) {
 }
 
 function consolidarPrestamos(wb, layout, log = () => {}) {
-  const plan = leerPlanDeCuentas(wb, layout).cuentas;
-  const presentes = PRESTAMOS_AL_PERSONAL.filter(c => plan[c]);
-  if (!presentes.length) return { movidas: [], sacadasDelPasivo: [], destino: null };
+  let plan = leerPlanDeCuentas(wb, layout).cuentas;
+  const presentes = PRESTAMOS_AL_PERSONAL.filter(p => plan[p.cuenta]);
 
-  const destino = prRenglonDestino(wb, layout, plan, log);
-  if (!destino) {
-    log(`  ⚠ Préstamos: no encontré en ${PR_HOJA_DESTINO} un renglón donde juntarlos; no toqué nada.`);
-    return { movidas: [], sacadasDelPasivo: [], destino: null };
-  }
+  const renombrados = prNormalizarNombres(wb, layout, plan, log);
 
-  // Primero se los saca del Pasivo. Va antes del enganche para que, si algo falla después,
-  // no quede el importe contado dos veces.
+  // Fuera del Pasivo primero: si algo fallara después, no queda contado dos veces.
   const sacadasDelPasivo = [];
   for (const hoja of PR_HOJAS_A_LIMPIAR) {
-    const filas = presentes.flatMap(c => [plan[c]].concat(plan[c].otrasFilas || []).map(f => f.fila));
+    const filas = presentes.flatMap(p => [plan[p.cuenta]].concat(plan[p.cuenta].otrasFilas || []).map(f => f.fila));
     for (const s of prVaciarEnHoja(wb, layout, hoja, filas)) {
       sacadasDelPasivo.push(s);
       log(`  ${s.hoja} fila ${s.fila} ("${s.rotulo}"): le saqué un préstamo — es una cuenta de ` +
@@ -97,22 +100,36 @@ function consolidarPrestamos(wb, layout, log = () => {}) {
     }
   }
 
-  const movidas = [];
-  for (const cod of presentes) {
-    const r = engancharEnHoja(wb, layout, PR_HOJA_DESTINO, cod, PR_ROTULO);
-    if (!r.hecho) { log(`  ⚠ Préstamos: ${cod} — ${r.motivo}.`); continue; }
-    movidas.push({ cod, fila: r.fila });
+  // Cada uno su renglón, en orden, encadenando el ancla para que queden seguidos.
+  //
+  // Se crean LOS SEIS en todos los archivos, incluso donde la cuenta todavía no está en el
+  // plan de SALDOS. Los cuatro informes tienen que tener los mismos renglones: si el renglón
+  // se creara sólo donde hay cuenta, el día que el sumas y saldos traiga ese préstamo el
+  // archivo no tendría dónde ponerlo y habría que acordarse de agregarlo a mano.
+  const creados = [];
+  let anclaPrevia = null;
+  for (const p of PRESTAMOS_AL_PERSONAL) {
+    const anclas = anclaPrevia ? [anclaPrevia].concat(PR_ANCLAS) : PR_ANCLAS;
+    const r = crearRenglon(wb, layout, PR_HOJA, p.rotulo, anclas, log);
+    if (r.hecho) creados.push({ rotulo: p.rotulo, fila: r.fila });
+    else if (!r.yaEstaba) log(`  ⚠ Préstamos: no pude crear "${p.rotulo}" — ${r.motivo}.`);
+    anclaPrevia = p.rotulo;
+    // Insertar filas mueve el plan de cuentas: hay que releerlo.
+    plan = leerPlanDeCuentas(wb, layout).cuentas;
   }
 
-  // El renglón que los junta tiene que verse. Si queda oculto, el importe entra en el
-  // subtotal pero no aparece en el informe impreso.
-  const fila = wb.getWorksheet(PR_HOJA_DESTINO).getRow(destino.renglon.fila);
-  if (fila.hidden) { fila.hidden = false; log(`  ${PR_HOJA_DESTINO} fila ${destino.renglon.fila}: estaba oculta, la dejé visible.`); }
+  const movidas = [];
+  for (const p of presentes) {
+    const res = engancharEnHoja(wb, layout, PR_HOJA, p.cuenta, p.rotulo);
+    if (!res.hecho) { log(`  ⚠ Préstamos: ${p.cuenta} — ${res.motivo}.`); continue; }
+    movidas.push({ cod: p.cuenta, rotulo: p.rotulo, fila: res.fila });
+  }
 
   if (movidas.length) {
-    log(`  Préstamos: ${movidas.length} cuenta(s) al renglón "${PR_ROTULO}" del ${PR_HOJA_DESTINO}.`);
+    log(`  Préstamos: ${movidas.length} cuenta(s), cada una en su renglón del ${PR_HOJA}` +
+        (creados.length ? `, ${creados.length} renglón(es) creado(s)` : "") + ".");
   }
-  return { movidas, sacadasDelPasivo, destino: destino.renglon.fila, renombrado: destino.renombrado };
+  return { movidas, sacadasDelPasivo, creados, renombrados };
 }
 
 if (typeof module !== "undefined") {
@@ -123,6 +140,7 @@ if (typeof module !== "undefined") {
   global.chNorm = ch.chNorm;
   global.chCeldaDelRotulo = ch.chCeldaDelRotulo;
   global.engancharEnHoja = ch.engancharEnHoja;
+  global.crearRenglon = require("./renglones_faltantes.js").crearRenglon;
   global.rtQuitarTermino = require("./rotulos_anexo.js").rtQuitarTermino;
-  module.exports = { PRESTAMOS_AL_PERSONAL, PR_ROTULO, consolidarPrestamos };
+  module.exports = { PRESTAMOS_AL_PERSONAL, consolidarPrestamos };
 }

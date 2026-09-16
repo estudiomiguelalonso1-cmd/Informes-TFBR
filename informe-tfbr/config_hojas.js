@@ -388,7 +388,7 @@ function engancharEnHoja(wb, layout, nombreHoja, cod, rotulo) {
 const RENOMBRES_RENGLON = [
   { hoja: "EERR",   cuenta: "4120300000", a: "Resultado venta bienes de uso" },
   { hoja: "Activo", cuenta: "1110101050", a: "- Fondo Fijo Adelantos PDT" },
-  { hoja: "Activo", cuenta: "1160100000", a: "- Fondo Común de Inversión BBVA" },
+  { hoja: "Activo", cuenta: "1160100000", a: "- Fondo común de inversión BBVA" },
   { hoja: "Activo", cuenta: "1160300000", a: "- Intereses a Devengar Plazo Fijo" },
   { hoja: "Pasivo", cuenta: "2110407000", a: "- Plan mis Facilidades" },
   { hoja: "Pasivo", cuenta: "2110408000", a: "- Intereses a devengar" },
@@ -397,12 +397,20 @@ const RENOMBRES_RENGLON = [
 // Cuentas que van a un renglón determinado, decidido con contaduría, más allá de dónde las
 // tenga hoy cada archivo.
 const ASIGNACIONES_APROBADAS = [
-  // El anticipo de vacaciones va junto con los adelantos al personal: es lo mismo, y el
-  // Acumulado $ ya lo tenía así.
-  { hoja: "Activo", cuenta: "1140500300", rotulo: "- Adelanto al personal" },
+  // El anticipo de vacaciones tiene su propio renglón en los cuatro, no va mezclado con los
+  // adelantos: el Acumulado $ lo tenía dentro de "Adelanto al personal" y así no se puede
+  // comparar contra los Mensuales, que lo abren aparte.
+  { hoja: "Activo", cuenta: "1140500300", rotulo: "- Anticipo de vacaciones" },
+  { hoja: "Activo", cuenta: "1140500500", rotulo: "- Adelanto de sueldos" },
   // El resultado por tenencia de FCI es un interés. Tres archivos ya lo tenían en "Intereses";
   // el Mensual R$ y el Acumulado R$ lo tenían mezclado en "Otros ingresos".
   { hoja: "EERR",   cuenta: "4231100000", rotulo: "Intereses" },
+  // El EERR del Acumulado R$ juntaba tres cuentas en "Otros ingresos y egresos". Los otros
+  // archivos las abren por separado, así que se abren también acá (los renglones que faltaban
+  // los crea renglones_faltantes.js justo antes).
+  { hoja: "EERR",   cuenta: "4120500000", rotulo: "Intereses" },
+  { hoja: "EERR",   cuenta: "4223600000", rotulo: "Otros ingresos" },
+  { hoja: "EERR",   cuenta: "4120100000", rotulo: "Recupero de gastos" },
 ];
 
 function chCeldaDelRotulo(ws, fila, colImporte) {
@@ -430,7 +438,10 @@ function aplicarRenombresRenglon(wb, layout, log = () => {}) {
     const filas = [cuenta].concat(cuenta.otrasFilas || []).map(f => f.fila);
     const destino = mapa.renglones.find(x => x.filasSaldos.some(f => filas.includes(f)));
     if (!destino) continue;
-    if (chNorm(destino.rotulo) === chNorm(r.a)) continue;          // ya se llama así
+    // Se compara el texto TAL CUAL, no normalizado: "Fondo Comun de Inversión BBVA" y
+    // "Fondo común de inversión BBVA" normalizan igual, así que comparando normalizado el
+    // renombre se salteaba y quedaban acentos y mayúsculas distintas en cada archivo.
+    if (String(destino.rotulo).trim() === r.a) continue;
 
     // Un renglón que agrupa varias cuentas no lleva el nombre de una sola.
     const cuantas = destino.filasSaldos.filter(f =>
@@ -441,7 +452,7 @@ function aplicarRenombresRenglon(wb, layout, log = () => {}) {
       continue;
     }
 
-    if (mapa.renglones.some(x => x !== destino && chNorm(x.rotulo) === chNorm(r.a))) {
+    if (mapa.renglones.some(x => x !== destino && String(x.rotulo).trim() === r.a)) {
       log(`  ⚠ ${r.hoja}: no renombré "${destino.rotulo}" porque "${r.a}" ya existe en esa hoja.`);
       continue;
     }
