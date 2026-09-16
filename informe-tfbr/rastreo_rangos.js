@@ -115,8 +115,34 @@ function expandirRangosSaldos(wb, layout, log = () => {}) {
 
 // Qué hoja lee cada fila del plan. Con los rangos ya expandidos esto es exacto: cada
 // referencia nombra una fila.
+// Los subtotales de SALDOS: celdas que suman un tramo de filas del plan. Una hoja que lee un
+// subtotal está leyendo, en los hechos, todas las cuentas que ese subtotal abarca.
+//
+// En el Mensual $ la celda SALDOS!E47 es SUM(D32:D47) y el EESP la lee como "Bienes de uso".
+// Sin seguir esa indirección, las dieciséis cuentas de ese tramo figuraban como que no las lee
+// nadie — y dos de ellas, con saldo, salían denunciadas como plata perdida que en realidad
+// llega al estado de situación patrimonial.
+function subtotalesDeSaldos(wb, layout) {
+  const S = wb.getWorksheet(layout.sheet);
+  const mapa = {};
+  for (let r = 1; r <= S.rowCount; r++) {
+    const row = S.getRow(r);
+    row.eachCell({ includeEmpty: false }, (cell, c) => {
+      const v = cell.value;
+      if (!v || typeof v !== "object" || typeof v.formula !== "string") return;
+      const m = /^SUM\(\$?([A-Z]{1,3})\$?(\d+):\$?([A-Z]{1,3})\$?(\d+)\)$/i.exec(v.formula);
+      if (!m || m[1].toUpperCase() !== m[3].toUpperCase()) return;
+      const desde = Math.min(+m[2], +m[4]), hasta = Math.max(+m[2], +m[4]);
+      if (hasta <= desde) return;
+      mapa[`${ctColNumeroALetra(c)}${r}`] = { desde, hasta };
+    });
+  }
+  return mapa;
+}
+
 function quienLeeCadaFila(wb, layout) {
   const lee = {};
+  const subtotales = subtotalesDeSaldos(wb, layout);
   for (const ws of wb.worksheets) {
     if (ws.name === layout.sheet) continue;
     ws.eachRow({ includeEmpty: false }, (row) => {
@@ -130,8 +156,15 @@ function quienLeeCadaFila(wb, layout) {
           for (let r = +m[1]; r <= +m[2]; r++) (lee[r] = lee[r] || new Set()).add(ws.name);
         }
         f = f.replace(/SALDOS!\$?[A-Z]{1,3}\$?\d+\s*:\s*\$?[A-Z]{1,3}\$?\d+/g, "");
-        for (const m of f.matchAll(/SALDOS!\$?[A-Z]{1,3}\$?(\d+)/g)) {
-          (lee[+m[1]] = lee[+m[1]] || new Set()).add(ws.name);
+        for (const m of f.matchAll(/SALDOS!\$?([A-Z]{1,3})\$?(\d+)/g)) {
+          const celda = `${m[1].toUpperCase()}${m[2]}`;
+          const sub = subtotales[celda];
+          if (sub) {
+            // Leer un subtotal es leer todo lo que el subtotal abarca.
+            for (let r = sub.desde; r <= sub.hasta; r++) (lee[r] = lee[r] || new Set()).add(ws.name);
+            continue;
+          }
+          (lee[+m[2]] = lee[+m[2]] || new Set()).add(ws.name);
         }
       });
     });
@@ -162,7 +195,9 @@ function cuentasSinDestino(wb, layout, planDeCuentas, escritas) {
 }
 
 if (typeof module !== "undefined") {
+  global.ctColNumeroALetra = require("./config_tfbr.js").ctColNumeroALetra;
   module.exports = {
-    expandirRangosSaldos, quienLeeCadaFila, cuentasSinDestino, RR_RE_SUM, RR_RE_RANGO,
+    expandirRangosSaldos, quienLeeCadaFila, cuentasSinDestino, subtotalesDeSaldos,
+    RR_RE_SUM, RR_RE_RANGO,
   };
 }

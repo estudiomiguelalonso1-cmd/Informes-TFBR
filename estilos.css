@@ -463,6 +463,22 @@ body.sin-scroll{overflow:hidden;}
 .cfg-resumen{font-size:13px; color:var(--tinta-suave); font-variant-numeric:tabular-nums;}
 .cfg-resumen b{color:var(--tinta); font-weight:600;}
 
+/* Una solapa por hoja del Excel. La hoja abierta manda: la lista, los renglones para elegir
+   y el buscador son todos de esa hoja. */
+.cfg-solapas{
+  display:flex; gap:2px; flex-wrap:wrap; margin-bottom:16px;
+  border-bottom:1px solid var(--borde);
+}
+.cfg-solapa{
+  background:none; border:0; border-bottom:2px solid transparent; border-radius:0;
+  padding:8px 14px; margin-bottom:-1px;
+  font:inherit; font-size:13.5px; font-weight:500; color:var(--tinta-suave);
+  cursor:pointer; transition:var(--transicion); white-space:nowrap;
+}
+.cfg-solapa:hover{color:var(--tinta); background:var(--fondo-alto);}
+.cfg-solapa.activa{color:var(--acento); border-bottom-color:var(--acento); font-weight:600;}
+.cfg-solapa:focus-visible{outline:2px solid var(--acento); outline-offset:-2px;}
+
 .cfg-barra{display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:6px;}
 .cfg-barra input[type="text"]{
   flex:1; min-width:220px; padding:9px 13px;
