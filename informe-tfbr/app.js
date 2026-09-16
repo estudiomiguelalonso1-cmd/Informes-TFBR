@@ -423,13 +423,21 @@ async function procesarPeriodo() {
       // pasivo y patrimonio salen del saldo en pesos dividido el tipo de cambio de cierre.
       // Ver convertirSaldosEnReales. Hace falta el TC, así que va después de cargarlo.
       const cuentasExport = convertirSaldosEnReales(App.cuentasExport[a.periodo], tcDelCierre);
+
+      // El Anexo I se carga desde el export ACUMULADO, y ese export tambien tiene que pasar por
+      // la conversion. Sin esto, el Anexo I del Mensual R$ tomaba el "Saldo (R$)" crudo —el
+      // valor a tipo de cambio historico— en vez del saldo en pesos dividido el TC de cierre:
+      // el valor de origen de bienes de uso daba 1.239.980,86 donde el Acumulado R$ decia
+      // 694.401,13, y el "Bienes de uso" del EESP terminaba en negativo. Para los dos archivos
+      // en pesos no cambia nada: la conversion no toca el saldo en pesos.
+      const cuentasAcumuladoConv = convertirSaldosEnReales(App.cuentasExport.acumulado, tcDelCierre);
       const { resumen, planDeCuentas, escritas } =
         procesarMaestroTFBR({ wb, cuentasExport, campoSaldo: a.campoSaldo, archivoId: a.id,
                               rotulosGuardados: App.rotulosGuardados,
                               configuracion: App.configuracion,
                               // El Anexo I es información acumulada en los cuatro archivos,
                               // así que sale del export acumulado aunque el archivo sea mensual.
-                              cuentasAcumulado: App.cuentasExport.acumulado,
+                              cuentasAcumulado: cuentasAcumuladoConv,
                               log });
 
       // el TC de cierre y la cifra de dif de cambio solo existen en uno de los 4 archivos:
