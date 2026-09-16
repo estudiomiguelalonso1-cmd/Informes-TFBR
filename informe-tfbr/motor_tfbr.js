@@ -151,6 +151,11 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // Pasivo — son cuentas 114, de activo, y en el Pasivo entraban restando.
   const prestamos = consolidarPrestamos(wb, layout, log);
 
+  // Cuentas que van a un renglón decidido con contaduría, esté donde estén hoy. Va DESPUÉS de
+  // consolidar los préstamos: en dos archivos el renglón "- Adelanto al personal" no existía
+  // con ese nombre y lo crea ese paso, así que corriendo antes no había dónde mandarlas.
+  const asignaciones = aplicarAsignaciones(wb, layout, log);
+
   const anexoI = completarAnexoI(wb, layout,
     { escritas, cuentasAcumulado: cuentasAcumulado || cuentasExport, campoSaldo }, log);
 
@@ -220,6 +225,7 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       sinRotulo,
       anexoI,
       renglonesRenombrados: renombres,
+      asignaciones,
       prestamos,
       rangosExpandidos: rastreo.expandidos,
       rangosSalteados: rastreo.salteados,
@@ -251,6 +257,7 @@ if (typeof module !== "undefined") {
   global.expandirRangosSaldos = rr.expandirRangosSaldos;
   global.completarAnexoI = require("./anexo_i.js").completarAnexoI;
   global.aplicarRenombresRenglon = require("./config_hojas.js").aplicarRenombresRenglon;
+  global.aplicarAsignaciones = require("./config_hojas.js").aplicarAsignaciones;
   global.consolidarPrestamos = require("./prestamos.js").consolidarPrestamos;
   global.cuentasSinDestino = rr.cuentasSinDestino;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };

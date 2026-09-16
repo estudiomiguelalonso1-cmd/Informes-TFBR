@@ -371,24 +371,40 @@ function engancharEnHoja(wb, layout, nombreHoja, cod, rotulo) {
   };
 }
 
-// ------------------------------------------------- renglones con el nombre equivocado
+// ------------------------------------------------- el mismo renglón, con el mismo nombre
 //
-// Un renglón que se llama de una cuenta y suma otra. En los dos Acumulados, el renglón
-// "Préstamo Lorena Alves" del Pasivo lee la cuenta 1140601300 PRESTAMO CUBA: el informe
-// muestra la deuda de Cuba con el nombre de Alves. No es un error de cableado —la cuenta que
-// suma es la que corresponde— sino del rótulo, así que lo que se corrige es el texto.
+// El mismo concepto se escribía distinto en cada archivo: "Fondo común de inversión BBVA",
+// "Fondo Común de inversión", "Fondo Comun de Inversión BBVA" y "Fondo común inversión BBVA"
+// son los cuatro renglones de la cuenta 1160100000. Como los informes se comparan entre sí,
+// cuatro nombres para lo mismo son cuatro renglones distintos.
 //
-// El renglón se busca POR LA CUENTA QUE LEE, no por su dirección: el motor inserta y borra
-// filas en cada corrida, y una dirección fija apuntaría a otro lado el mes que viene. Y se
-// exige que el rótulo actual sea el equivocado: si alguien ya lo arregló a mano, no se toca.
-// Los renombres de renglón que hubo que hacer se resolvieron de otra forma (ver prestamos.js:
-// el renglón del Pasivo no se renombra, se vacía, porque la cuenta que lo alimentaba es de
-// activo y no tenía que estar ahí). La tabla queda vacía a propósito, con la función lista
-// para el próximo caso.
-const RENOMBRES_RENGLON = [];
+// El renglón se busca POR LA CUENTA QUE LEE, no por su nombre anterior ni por su dirección:
+// el nombre es justamente lo que varía, y las direcciones se mueven en cada corrida.
+//
+// Se renombra SÓLO si ese renglón lee esa cuenta y ninguna otra. Un renglón que agrupa varias
+// cuentas no se puede renombrar con el nombre de una: en el Acumulado R$, "Otros ingresos y
+// egresos" junta cuatro cuentas que los otros archivos reparten en tres renglones, y ponerle
+// el nombre de una sola escondería a las otras tres.
+const RENOMBRES_RENGLON = [
+  { hoja: "EERR",   cuenta: "4120300000", a: "Resultado venta bienes de uso" },
+  { hoja: "Activo", cuenta: "1110101050", a: "- Fondo Fijo Adelantos PDT" },
+  { hoja: "Activo", cuenta: "1160100000", a: "- Fondo Común de Inversión BBVA" },
+  { hoja: "Activo", cuenta: "1160300000", a: "- Intereses a Devengar Plazo Fijo" },
+  { hoja: "Pasivo", cuenta: "2110407000", a: "- Plan mis Facilidades" },
+  { hoja: "Pasivo", cuenta: "2110408000", a: "- Intereses a devengar" },
+];
 
+// Cuentas que van a un renglón determinado, decidido con contaduría, más allá de dónde las
+// tenga hoy cada archivo.
+const ASIGNACIONES_APROBADAS = [
+  // El anticipo de vacaciones va junto con los adelantos al personal: es lo mismo, y el
+  // Acumulado $ ya lo tenía así.
+  { hoja: "Activo", cuenta: "1140500300", rotulo: "- Adelanto al personal" },
+  // El resultado por tenencia de FCI es un interés. Tres archivos ya lo tenían en "Intereses";
+  // el Mensual R$ y el Acumulado R$ lo tenían mezclado en "Otros ingresos".
+  { hoja: "EERR",   cuenta: "4231100000", rotulo: "Intereses" },
+];
 
-// La celda donde está escrito el rótulo de un renglón.
 function chCeldaDelRotulo(ws, fila, colImporte) {
   for (let c = colImporte - 1; c >= 1; c--) {
     const v = ws.getCell(fila, c).value;
@@ -412,26 +428,54 @@ function aplicarRenombresRenglon(wb, layout, log = () => {}) {
     if (!mapa) continue;
 
     const filas = [cuenta].concat(cuenta.otrasFilas || []).map(f => f.fila);
-    const destino = mapa.renglones.find(x =>
-      x.filasSaldos.some(f => filas.includes(f)) && chNorm(x.rotulo) === chNorm(r.de));
-    if (!destino) continue;                      // ya renombrado, o no es este archivo
+    const destino = mapa.renglones.find(x => x.filasSaldos.some(f => filas.includes(f)));
+    if (!destino) continue;
+    if (chNorm(destino.rotulo) === chNorm(r.a)) continue;          // ya se llama así
 
-    // No se pisa un nombre que ya exista en la hoja: quedarían dos renglones iguales y
-    // ninguno de los dos se podría elegir después desde el panel.
+    // Un renglón que agrupa varias cuentas no lleva el nombre de una sola.
+    const cuantas = destino.filasSaldos.filter(f =>
+      Object.values(plan).some(c => c.fila === f || (c.otrasFilas || []).some(o => o.fila === f))).length;
+    if (cuantas > 1) {
+      log(`  ⚠ ${r.hoja}: no renombré el renglón de ${r.cuenta} a "${r.a}" porque agrupa ` +
+          `${cuantas} cuentas; ponerle el nombre de una escondería a las otras.`);
+      continue;
+    }
+
     if (mapa.renglones.some(x => x !== destino && chNorm(x.rotulo) === chNorm(r.a))) {
-      log(`  ⚠ ${r.hoja}: no renombré "${r.de}" porque "${r.a}" ya existe en esa hoja.`);
+      log(`  ⚠ ${r.hoja}: no renombré "${destino.rotulo}" porque "${r.a}" ya existe en esa hoja.`);
       continue;
     }
 
     const celda = chCeldaDelRotulo(mapa.ws, destino.fila, destino.cols[0].col);
     if (!celda) continue;
+    const antes = destino.rotulo;
     mapa.ws.getCell(celda.fila, celda.col).value = r.a;
-    hechos.push({ hoja: r.hoja, fila: destino.fila, de: r.de, a: r.a, cuenta: r.cuenta });
-    log(`  ${r.hoja} fila ${destino.fila}: el renglón se llamaba "${r.de}" pero suma ` +
-        `${r.cuenta} ${cuenta.texto ? cuenta.texto.replace(/^\s*[\d.]+\s*/, "").trim() : ""}; ` +
-        `pasa a llamarse "${r.a}".`);
+    hechos.push({ hoja: r.hoja, fila: destino.fila, de: antes, a: r.a, cuenta: r.cuenta });
+    log(`  ${r.hoja} fila ${destino.fila}: "${antes}" pasa a llamarse "${r.a}" (igual que en los ` +
+        `otros archivos).`);
   }
   return hechos;
+}
+
+// Manda cada cuenta al renglón que se decidió, esté donde esté hoy.
+function aplicarAsignaciones(wb, layout, log = () => {}) {
+  const plan = leerPlanDeCuentas(wb, layout).cuentas;
+  const hechos = [], salteadas = [];
+  for (const a of ASIGNACIONES_APROBADAS) {
+    if (!plan[a.cuenta]) continue;
+    const mapa = chMapaHoja(wb, layout, a.hoja);
+    if (!mapa) continue;
+    const filas = [plan[a.cuenta]].concat(plan[a.cuenta].otrasFilas || []).map(f => f.fila);
+    const actual = mapa.renglones.find(x => x.filasSaldos.some(f => filas.includes(f)));
+    if (actual && chNorm(actual.rotulo) === chNorm(a.rotulo)) continue;   // ya está donde va
+
+    const r = engancharEnHoja(wb, layout, a.hoja, a.cuenta, a.rotulo);
+    if (!r.hecho) { salteadas.push({ ...a, motivo: r.motivo }); log(`  ⚠ ${a.hoja}: ${a.cuenta} — ${r.motivo}.`); continue; }
+    hechos.push({ ...a, de: actual ? actual.rotulo : null, fila: r.fila });
+    log(`  ${a.hoja}: ${a.cuenta} pasa de ${actual ? `"${actual.rotulo}"` : "ningún renglón"} ` +
+        `a "${a.rotulo}".`);
+  }
+  return { hechos, salteadas };
 }
 
 if (typeof module !== "undefined") {
@@ -446,5 +490,6 @@ if (typeof module !== "undefined") {
     chRubroDeHoja, chPlanPorFila, engancharEnHoja,
     chSignoDelRenglon, chSignoDeHoja, chAplanarSignos, chHojaEditable,
     RENOMBRES_RENGLON, aplicarRenombresRenglon, chCeldaDelRotulo,
+    ASIGNACIONES_APROBADAS, aplicarAsignaciones,
   };
 }
