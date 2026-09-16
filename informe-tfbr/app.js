@@ -16,6 +16,7 @@ const App = {
   resultados: {},       // archivoId -> { resumen, workbookBuffer }
   aprobadosBuffers: {}, // archivoId -> ArrayBuffer (subido en la revisión final)
   validaciones: {},     // archivoId -> resultado de validarRecalculado
+  alineacion: null,     // resultado de alinearHojas sobre los 4 de esta corrida
   rotulosGuardados: {}, // codigo -> rótulo del Anexo II (null = sin rótulo, decidido)
   logLineas: [],
 };
@@ -309,6 +310,19 @@ async function procesarPeriodo() {
         workbookBuffer: outBuffer,
       };
     }
+    // Con los cuatro ya procesados, que lean las mismas cuentas en cada hoja. Va acá y no en
+    // el motor porque necesita ver los cuatro a la vez: lo que decide dónde va una cuenta es
+    // dónde la pusieron los otros archivos.
+    App.alineacion = alinearHojas(
+      ARCHIVOS_TFBR.map(a => ({ id: a.id, label: a.label, wb: App.resultados[a.id] && App.resultados[a.id].wb }))
+        .filter(x => x.wb),
+      log);
+    // Los .xlsx se vuelven a generar: el enganche recién hecho tiene que estar en lo que se baja.
+    for (const a of ARCHIVOS_TFBR) {
+      const r = App.resultados[a.id];
+      if (r && r.wb) r.workbookBuffer = await r.wb.xlsx.writeBuffer();
+    }
+
     pintarCuentasNuevas();
     pintarResultado();
     mostrar("cardResultado", true);
@@ -320,6 +334,38 @@ async function procesarPeriodo() {
     mostrar("spinnerProcesar", false);
     document.getElementById("btnProcesar").disabled = false;
   }
+}
+
+// Lo que la alineación entre los cuatro archivos hizo y lo que no pudo.
+function pintarAlineacion() {
+  const cont = document.getElementById("alineacionResumen");
+  if (!cont) return;
+  const a = App.alineacion;
+  if (!a) { cont.innerHTML = ""; return; }
+
+  let html = "";
+  if (a.enganchadas.length) {
+    const porHoja = {};
+    a.enganchadas.forEach(x => { porHoja[x.hoja] = (porHoja[x.hoja] || 0) + 1; });
+    html += `<p class="footer-note">✓ ${a.enganchadas.length} cuenta(s) se engancharon para que ` +
+      `los cuatro archivos lean lo mismo (` +
+      Object.entries(porHoja).map(([h, n]) => `${h}: ${n}`).join(", ") + `).</p>`;
+  }
+  // Una cuenta que cada archivo pone en un renglón distinto no se resuelve sola: elegir uno
+  // sería mover plata de un renglón del balance a otro sin que nadie lo apruebe.
+  if (a.discrepan.length) {
+    html += `<div class="aviso-plata"><b>${a.discrepan.length} cuenta(s) están en renglones ` +
+      `distintos según el archivo.</b> No elijo por mi cuenta: definilas en Configurar cuentas.<ul>` +
+      a.discrepan.map(d =>
+        `<li><span class="mono">${d.cod}</span> en ${d.hoja} — ${d.detalle}</li>`).join("") +
+      `</ul></div>`;
+  }
+  if (a.pendientes.length) {
+    html += a.pendientes.map(p =>
+      `<p class="footer-note">⚠ ${p.archivo}: ${p.cod} no se pudo poner en ${p.hoja} → ` +
+      `"${p.rotulo}" — ${p.motivo}.</p>`).join("");
+  }
+  cont.innerHTML = html;
 }
 
 // ------------------------------------------------- cuentas nuevas: ¿a qué rótulo van?
@@ -434,6 +480,19 @@ async function aplicarCuentasNuevas() {
               `va a volver a preguntar. Los archivos de este mes sí quedaron bien.`;
     }
 
+    // Con los cuatro ya procesados, que lean las mismas cuentas en cada hoja. Va acá y no en
+    // el motor porque necesita ver los cuatro a la vez: lo que decide dónde va una cuenta es
+    // dónde la pusieron los otros archivos.
+    App.alineacion = alinearHojas(
+      ARCHIVOS_TFBR.map(a => ({ id: a.id, label: a.label, wb: App.resultados[a.id] && App.resultados[a.id].wb }))
+        .filter(x => x.wb),
+      log);
+    // Los .xlsx se vuelven a generar: el enganche recién hecho tiene que estar en lo que se baja.
+    for (const a of ARCHIVOS_TFBR) {
+      const r = App.resultados[a.id];
+      if (r && r.wb) r.workbookBuffer = await r.wb.xlsx.writeBuffer();
+    }
+
     pintarCuentasNuevas();
     pintarResultado();
     estadoUi("nuevasStatus",
@@ -453,6 +512,7 @@ async function aplicarCuentasNuevas() {
 // ------------------------------------------------------------ resultado / descargas
 
 function pintarResultado() {
+  pintarAlineacion();
   const cont = document.getElementById("resultadoResumen");
   cont.innerHTML = "";
   for (const a of ARCHIVOS_TFBR) {
