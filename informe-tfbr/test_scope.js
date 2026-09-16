@@ -15,7 +15,7 @@ const path = require("path");
 // encontrar pasaba igual. Se saltean los de vendor/, que son librerías de terceros.
 const ARCHIVOS = fs.readFileSync(path.join(__dirname, "index.html"), "utf8")
   .split("\n")
-  .map(l => /<script src="([^"]+)"/.exec(l))
+  .map(l => /<script(?:\s+defer)?\s+src="([^"]+)"/.exec(l))
   .filter(Boolean)
   .map(m => m[1])
   .filter(src => !src.startsWith("vendor/"));

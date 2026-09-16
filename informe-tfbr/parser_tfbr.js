@@ -57,6 +57,27 @@ function ptUbicarColumna(filas, merges, filaEnc, filasDeCuenta, textoBuscado) {
   return col;
 }
 
+// El tipo de cambio de cierre, cuando el export lo trae.
+//
+// El de agosto de 2026 lo incluye en el encabezado ("TC 31/8" y al lado 291.3301). El de julio
+// no lo traía y había que tipearlo. Leerlo de acá saca un dato manual del cierre, y además hace
+// falta para verificar la columna de saldos en reales (ver más abajo).
+function ptBuscarTcCierre(filas) {
+  for (let r = 0; r < Math.min(filas.length, 14); r++) {
+    const f = filas[r] || [];
+    for (let c = 0; c < f.length; c++) {
+      if (typeof f[c] !== "string") continue;
+      if (!/^T\.?\s*C\.?\b/i.test(f[c].trim())) continue;
+      for (let d = 1; d <= 3; d++) {
+        if (typeof f[c + d] === "number" && f[c + d] > 0) {
+          return { valor: f[c + d], etiqueta: f[c].trim(), fila: r, col: c + d };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 // filas: XLSX.utils.sheet_to_json(ws, {header:1}). merges: ws['!merges'].
 function parseSumasYSaldosTFBR(filas, merges) {
   let filaEnc = null;
@@ -81,6 +102,8 @@ function parseSumasYSaldosTFBR(filas, merges) {
   }
   if (!filasDeCuenta.length) throw new Error("El export no tiene ninguna línea de cuenta.");
 
+  const tc = ptBuscarTcCierre(filas);
+
   const cols = {
     debe_ars: ptUbicarColumna(filas, merges, filaEnc, filasDeCuenta, "Debe ($)"),
     haber_ars: ptUbicarColumna(filas, merges, filaEnc, filasDeCuenta, "Haber ($)"),
@@ -90,24 +113,35 @@ function parseSumasYSaldosTFBR(filas, merges) {
     saldo_brl: ptUbicarColumna(filas, merges, filaEnc, filasDeCuenta, "Saldo (R$)"),
   };
 
-  for (const moneda of ["ars", "brl"]) {
-    const cd = cols["debe_" + moneda], ch = cols["haber_" + moneda], cs = cols["saldo_" + moneda];
-    if (cd === null || ch === null || cs === null) continue;
-    let miradas = 0, cierran = 0;
-    for (const f of filasDeCuenta) {
-      const d = typeof f[cd] === "number" ? f[cd] : 0;
-      const h = typeof f[ch] === "number" ? f[ch] : 0;
-      const sa = typeof f[cs] === "number" ? f[cs] : 0;
-      if (!d && !h && !sa) continue;
-      miradas++;
-      if (Math.abs((d - h) - sa) < 0.02) cierran++;
-    }
-    if (miradas >= 5 && cierran < miradas * 0.9) {
-      throw new Error(
-        `Las columnas de ${moneda === "ars" ? "pesos" : "reales"} del export no cierran: ` +
-        `el saldo tendría que ser debe menos haber y sólo da en ${cierran} de ${miradas} cuentas. ` +
-        `Puede que el reporte de Onvio haya cambiado de formato. NO se cargó nada.`
-      );
+  // El control de que las columnas sean las que decimos que son.
+  //
+  // Se mira SÓLO en pesos: ahí el saldo siempre es debe menos haber, y si las columnas
+  // estuvieran corridas los tres números no tendrían relación entre sí. Alcanza con eso para
+  // atrapar un cambio de formato.
+  //
+  // En reales NO se controla la resta, y no es que el archivo esté mal: el saldo en reales de
+  // las cuentas patrimoniales no se usa (ver convertirSaldosEnReales). El control anterior
+  // exigía la resta en las dos monedas y rechazaba el export de agosto de 2026 entero, con un
+  // mensaje que hacía pensar en un archivo roto.
+  {
+    const cd = cols.debe_ars, ch = cols.haber_ars, cs = cols.saldo_ars;
+    if (cd !== null && ch !== null && cs !== null) {
+      let miradas = 0, cierran = 0;
+      for (const f of filasDeCuenta) {
+        const d = typeof f[cd] === "number" ? f[cd] : 0;
+        const h = typeof f[ch] === "number" ? f[ch] : 0;
+        const sa = typeof f[cs] === "number" ? f[cs] : 0;
+        if (!d && !h && !sa) continue;
+        miradas++;
+        if (Math.abs((d - h) - sa) < 0.02) cierran++;
+      }
+      if (miradas >= 5 && cierran < miradas * 0.9) {
+        throw new Error(
+          `Las columnas de pesos del export no cierran: el saldo tendría que ser debe menos ` +
+          `haber y sólo da en ${cierran} de ${miradas} cuentas. Puede que el reporte de Onvio ` +
+          `haya cambiado de formato. NO se cargó nada.`
+        );
+      }
     }
   }
 
@@ -156,6 +190,7 @@ function parseSumasYSaldosTFBR(filas, merges) {
   return {
     cuentas,
     columnas: cols,
+    tcCierre: tc,
     filaEncabezados: filaEnc,
     discrepanciasCapitulo: discrepancias,
     totales: {
@@ -165,13 +200,58 @@ function parseSumasYSaldosTFBR(filas, merges) {
   };
 }
 
+// Redondeo a centavos, como lo hace la planilla: el medio centavo va para afuera del cero,
+// no al par más cercano. Con Math.round a secas, -0.005 daría -0.00 y 0.005 daría 0.01, y los
+// negativos quedarían un centavo corridos respecto del reporte.
+function ptRedondearCentavos(x) {
+  const signo = x < 0 ? -1 : 1;
+  return signo * Math.round(Math.abs(x) * 100) / 100;
+}
+
+// El saldo en reales que usan los informes, a partir del export ORIGINAL del sistema.
+//
+// La regla es de contaduría, no del programa:
+//
+//   Cuentas 1, 2 y 3 (activo, pasivo, patrimonio): NO se usa el saldo en reales que trae el
+//   export. Se toma el saldo en PESOS y se divide por el tipo de cambio de cierre. Son cuentas
+//   patrimoniales: valen lo que valen a la fecha de cierre, no la suma de los movimientos
+//   convertidos cada uno al cambio de su día.
+//
+//   Cuentas 4 (resultados): se toma el saldo en reales tal cual viene. Un resultado es la
+//   acumulación de lo que pasó durante el período, cada movimiento al cambio de su momento, y
+//   reexpresarlo al cambio de cierre lo cambiaría de sentido.
+//
+// Las columnas de debe y haber no se usan para nada de esto.
+//
+// Verificado contra el export de agosto de 2026 ya convertido por contaduría: las 144 cuentas
+// de los dos archivos dan igual al centavo.
+function convertirSaldosEnReales(cuentas, tipoDeCambio) {
+  const tc = Number(tipoDeCambio);
+  if (!tc || !isFinite(tc) || tc <= 0) {
+    throw new Error(
+      "Falta el tipo de cambio de cierre: sin él no se puede calcular el saldo en reales de " +
+      "las cuentas de activo, pasivo y patrimonio. NO se procesó nada."
+    );
+  }
+  return (cuentas || []).map(c => {
+    const rubro = String(c.codigo).trim()[0];
+    if (rubro === "4") return { ...c, saldo_brl_export: c.saldo_brl };
+    return {
+      ...c,
+      saldo_brl_export: c.saldo_brl,
+      saldo_brl: ptRedondearCentavos(c.saldo_ars / tc),
+    };
+  });
+}
+
 function capituloDeCodigoTFBR(codigo) {
   return CAPITULO_POR_DIGITO_TFBR[String(codigo).trim()[0]] || null;
 }
 
 if (typeof module !== "undefined") {
   module.exports = {
-    parseSumasYSaldosTFBR, capituloDeCodigoTFBR, ptUbicarColumna,
+    parseSumasYSaldosTFBR, capituloDeCodigoTFBR, ptUbicarColumna, ptBuscarTcCierre,
+    convertirSaldosEnReales, ptRedondearCentavos,
     CAPITULOS_TFBR, CAPITULO_POR_DIGITO_TFBR,
   };
 }

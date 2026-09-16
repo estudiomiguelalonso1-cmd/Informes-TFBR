@@ -59,6 +59,54 @@ function escribirStaging(wb, layout, matcheadas, log = () => {}) {
       `(${ctColNumeroALetra(colDesde)}${filaDesde}:${ctColNumeroALetra(colHasta)}${filaHasta}).`);
 }
 
+// Cuántas filas de colchón se dejan al ampliar la zona de pegado. El plan de cuentas crece de
+// a poco —entre julio y agosto de 2026 el acumulado pasó de 87 a 91 cuentas— y ampliar de a una
+// fila por mes significa insertar filas en cada cierre. Con margen se hace una vez y aguanta.
+const MOTOR_MARGEN_STAGING = 15;
+
+// La capacidad que tienen que tener los cuatro archivos, tengan las cuentas que tengan hoy.
+//
+// Venían con capacidades distintas y por casualidad: 118, 58, 123 y 106 filas. Eso significa que
+// el mismo plan de cuentas entra en unos y en otros no, y que el primero en quedarse corto es
+// siempre el mismo sin que haya una razón. Igualarlos hace que los cuatro aguanten lo mismo y
+// que, cuando uno tenga que crecer, crezcan todos a la vez y por el mismo motivo.
+//
+// 150 es cómodo sobre las 91 cuentas que trae hoy el acumulado, y a razón de las cuatro cuentas
+// nuevas que aparecieron entre julio y agosto de 2026 da para varios años. Si algún mes hiciera
+// falta más, se amplía sola igual: esto es un piso, no un techo.
+const MOTOR_CAPACIDAD_MINIMA = 150;
+
+// La zona de pegado se quedó corta: se le agregan filas.
+//
+// El Acumulado R$ tenía 88 filas y agosto de 2026 trajo 91 cuentas. Sin esto el motor frena el
+// cierre entero con "hay que ampliar el rango en la plantilla", que es correcto pero deja el
+// trabajo a mano justo en el paso que el sistema existe para automatizar.
+//
+// Las filas se insertan EN LA ÚLTIMA DEL RANGO, no debajo: ahí todavía están dentro, así que el
+// rango del BUSCARV se estira solo y lo que haya más abajo se corre sin romperse. Insertar
+// debajo dejaría las filas nuevas fuera del rango y las cuentas que cayeran ahí no se
+// levantarían — el balance cerraría igual y el importe no estaría.
+function ampliarZonaDePegado(wb, layout, necesarias, log = () => {}) {
+  const sr = layout.stagingRange;
+  const capacidad = sr.filaHasta - sr.filaDesde + 1;
+  // El piso es el mismo para los cuatro; si un mes trajera más cuentas que eso, manda lo que
+  // haga falta más el colchón.
+  const objetivo = Math.max(MOTOR_CAPACIDAD_MINIMA, necesarias + MOTOR_MARGEN_STAGING);
+  if (capacidad >= objetivo) return { ampliada: false, capacidad };
+
+  const faltan = objetivo - capacidad;
+  const modificadas = [];
+  for (let i = 0; i < faltan; i++) {
+    modificadas.push(insertRowEn(wb, layout.sheet, layout.stagingRange.filaHasta));
+    layout = derivarLayoutSaldos(wb);
+  }
+  const nueva = layout.stagingRange;
+  log(`  Zona de pegado: tenía ${capacidad} filas, este mes hacían falta ${necesarias} y el ` +
+      `mínimo de los cuatro archivos es ${MOTOR_CAPACIDAD_MINIMA}. Se agregaron ${faltan}: ` +
+      `ahora va de ${nueva.filaDesde} a ${nueva.filaHasta} (${objetivo} filas).`);
+  return { ampliada: true, faltan, capacidad, objetivo, layout };
+}
+
 // Corre el proceso completo para UN archivo/moneda. No guarda el archivo (eso lo decide
 // quien llama, según si va a pedir más pasos antes de bajar el .xlsx).
 function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, altaAutomatica = true,
@@ -133,6 +181,10 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   }
 
   const { matcheadas, sinMapear, escritas } = emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo);
+
+  // Antes de escribir: que haya lugar. El plan de cuentas crece y la zona de pegado no.
+  const ampliacion = ampliarZonaDePegado(wb, layout, matcheadas.length, log);
+  if (ampliacion.ampliada) layout = ampliacion.layout;
 
   escribirStaging(wb, layout, matcheadas, log);
 
@@ -249,6 +301,7 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       rotulosAuto,
       sinRotulo,
       anexoI,
+      zonaDePegado: ampliacion,
       renglonesRenombrados: renombres,
       asignaciones,
       configurado,
@@ -277,6 +330,7 @@ if (typeof module !== "undefined") {
   global.repuntarGemela = ic.repuntarGemela;
   global.aplicarRepuntesAnexo = require("./repuntes_anexo.js").aplicarRepuntesAnexo;
   global.limpiarPlanDeCuentas = require("./limpieza_plan.js").limpiarPlanDeCuentas;
+  global.insertRowEn = require("./formula_hojas.js").insertRowEn;
   global.agregarRotulosAnexo = require("./rotulos_anexo.js").agregarRotulosAnexo;
   global.unificarRotulosAnexo = require("./rotulos_unificados.js").unificarRotulosAnexo;
   const cn = require("./cuentas_nuevas.js");

@@ -11,7 +11,7 @@ const ARCHIVOS_TFBR = [
 
 const App = {
   altaBuffers: {},      // archivoId -> ArrayBuffer (subido en "primera vez", antes de guardarlo)
-  maestrosCargados: {}, // archivoId -> { wb: ExcelJS.Workbook, sha }  (para la corrida del mes)
+  maestrosCargados: {}, // archivoId -> { buffer, sha, wb? }  — el wb se arma recién al usarlo
   cuentasExport: {},    // "mensual"|"acumulado" -> cuentas parseadas
   resultados: {},       // archivoId -> { resumen, workbookBuffer }
   aprobadosBuffers: {}, // archivoId -> ArrayBuffer (subido en la revisión final)
@@ -46,6 +46,53 @@ function avisarPeriodo() {
   el.textContent = f.periodo
     ? `Se cierra el período ${f.periodo} y los informes van a decir ${f.texto}.`
     : "";
+}
+
+// Las dos librerías pesan 1,8 MB de los 2 MB de la página, y no hacen falta para mostrarla:
+// ExcelJS recién se usa al procesar y XLSX al leer el export. Cargarlas al abrir obligaba a
+// esperarlas en cada refresh aunque no se fuera a procesar nada.
+//
+// Se cargan una sola vez y se recuerda la promesa: dos llamadas simultáneas esperan la misma
+// carga en vez de pedir el archivo dos veces.
+const LIBRERIAS = {
+  exceljs: { src: "vendor/exceljs.min.js", global: "ExcelJS" },
+  xlsx: { src: "vendor/xlsx.full.min.js", global: "XLSX" },
+};
+const _libreriasPedidas = {};
+
+function cargarLibreria(cual) {
+  const lib = LIBRERIAS[cual];
+  if (!lib) return Promise.reject(new Error(`Librería desconocida: ${cual}`));
+  if (window[lib.global]) return Promise.resolve();
+  if (_libreriasPedidas[cual]) return _libreriasPedidas[cual];
+
+  _libreriasPedidas[cual] = new Promise((listo, error) => {
+    const el = document.createElement("script");
+    el.src = lib.src;
+    el.onload = () => listo();
+    el.onerror = () => {
+      delete _libreriasPedidas[cual];   // que un fallo de red se pueda reintentar
+      error(new Error(`No pude cargar ${lib.src}. Revisá la conexión y volvé a intentar.`));
+    };
+    document.head.appendChild(el);
+  });
+  return _libreriasPedidas[cual];
+}
+
+// El workbook de un maestro, armado recién cuando se lo necesita.
+//
+// Al abrir la página sólo se baja el archivo y se guarda el buffer: parsear los cuatro con
+// ExcelJS para averiguar si existen costaba varios segundos en cada refresh, y el 90% de las
+// veces la persona entra a mirar el historial o a configurar cuentas y no procesa nada.
+async function maestroWb(archivoId) {
+  const cargado = App.maestrosCargados[archivoId];
+  if (!cargado) return null;
+  if (cargado.wb) return cargado.wb;
+  await cargarLibreria("exceljs");
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(cargado.buffer);
+  cargado.wb = wb;
+  return wb;
 }
 
 function mostrar(id, visible) {
@@ -179,13 +226,19 @@ async function guardarConfiguracion(config, mensaje) {
 }
 
 async function revisarMaestrosExistentes() {
+  // Los cuatro a la vez, y sin parsearlos: acá sólo hace falta saber si están. Uno por uno y
+  // pasándolos por ExcelJS eran cuatro viajes a GitHub en fila más cuatro parseos, en cada
+  // refresh de la página. El workbook se arma recién cuando se usa (ver maestroWb).
+  App.maestrosCargados = {};
+  const bajados = await Promise.all(ARCHIVOS_TFBR.map(async (a) => {
+    try { return { a, r: await ghtLeerMaestro(a.id) }; }
+    catch (e) { log(`No pude leer el maestro de ${a.label}: ${e.message}`); return { a, r: null }; }
+  }));
+
   const faltantes = [];
-  for (const a of ARCHIVOS_TFBR) {
-    const r = await ghtLeerMaestro(a.id);
+  for (const { a, r } of bajados) {
     if (!r) { faltantes.push(a); continue; }
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(r.buffer);
-    App.maestrosCargados[a.id] = { wb, sha: r.sha };
+    App.maestrosCargados[a.id] = { buffer: r.buffer, sha: r.sha };
   }
   if (faltantes.length) {
     pintarDropzonesAlta(faltantes);
@@ -219,6 +272,7 @@ async function onAltaArchivo(a, ev) {
   }
   const buffer = await file.arrayBuffer();
   try {
+    await cargarLibreria("exceljs");
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
     if (!wb.getWorksheet("SALDOS")) throw new Error("este archivo no tiene una hoja 'SALDOS'.");
@@ -266,6 +320,7 @@ async function onExportArchivo(periodo, ev) {
   if (!file) return;
   const txt = document.getElementById(periodo === "mensual" ? "txtMensual" : "txtAcumulado");
   try {
+    await cargarLibreria("xlsx");
     const buffer = await file.arrayBuffer();
     const wb = XLSX.read(buffer, { type: "array", cellFormula: true });
     const ws = wb.Sheets["Sheet1"];
@@ -275,6 +330,22 @@ async function onExportArchivo(periodo, ev) {
     App.cuentasExport[periodo] = parsed.cuentas;
     txt.textContent =
       `${file.name} ✓ — ${parsed.cuentas.length} cuentas, total $ ${parsed.totales.saldo_ars.toFixed(2)}`;
+
+    // El tipo de cambio de cierre, si el export lo trae. Desde agosto de 2026 viene en el
+    // encabezado ("TC 31/8  291.3301") y no hay razón para tipearlo. Se completa el campo y se
+    // deja editable: si el export no lo trae, o si contaduría quiere usar otro, se escribe.
+    if (parsed.tcCierre) {
+      const campo = document.getElementById("tcCierreInput");
+      const yaHabia = campo.value.trim();
+      if (!yaHabia || Number(yaHabia) === parsed.tcCierre.valor) {
+        campo.value = parsed.tcCierre.valor;
+        txt.textContent += ` · TC ${parsed.tcCierre.valor} tomado del archivo`;
+      } else {
+        txt.textContent += ` · ⚠ el archivo trae TC ${parsed.tcCierre.valor} y en pantalla ` +
+                           `hay ${yaHabia}: revisá cuál corresponde`;
+      }
+      revisarListoParaProcesar();
+    }
     if (parsed.discrepanciasCapitulo.length) {
       txt.textContent += ` (⚠ ${parsed.discrepanciasCapitulo.length} discrepancia(s) de capítulo)`;
     }
@@ -301,6 +372,12 @@ async function procesarPeriodo() {
   document.getElementById("btnProcesar").disabled = true;
   App.logLineas = [];
   try {
+    await cargarLibreria("exceljs");
+    const tcDelCierre = document.getElementById("tcCierreInput").value.trim();
+    if (!tcDelCierre) {
+      throw new Error("Falta el tipo de cambio de cierre: sin él no se puede calcular el " +
+                      "saldo en reales de las cuentas de activo, pasivo y patrimonio.");
+    }
     for (const a of ARCHIVOS_TFBR) {
       log(`\n=== ${a.label} ===`);
       const cargado = App.maestrosCargados[a.id];
@@ -308,9 +385,8 @@ async function procesarPeriodo() {
 
       // se trabaja sobre una copia en memoria: si algo falla más adelante, el maestro
       // guardado en GitHub no se tocó
-      const buffer = await cargado.wb.xlsx.writeBuffer();
       const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buffer);
+      await wb.xlsx.load(cargado.buffer);
 
       // Los errores que el archivo YA tenía antes de que lo tocáramos: son la línea de base
       // contra la que después se comparan los del archivo aprobado, para distinguir un
@@ -319,7 +395,10 @@ async function procesarPeriodo() {
       // cuando el motor lo corre de fila (ver vtHuellaError)
       const erroresPrevios = celdasEnErrorDetalle(wb);
 
-      const cuentasExport = App.cuentasExport[a.periodo];
+      // El saldo en reales se calcula acá, no se toma del export: las cuentas de activo,
+      // pasivo y patrimonio salen del saldo en pesos dividido el tipo de cambio de cierre.
+      // Ver convertirSaldosEnReales. Hace falta el TC, así que va después de cargarlo.
+      const cuentasExport = convertirSaldosEnReales(App.cuentasExport[a.periodo], tcDelCierre);
       const { resumen, planDeCuentas, escritas } =
         procesarMaestroTFBR({ wb, cuentasExport, campoSaldo: a.campoSaldo, archivoId: a.id,
                               rotulosGuardados: App.rotulosGuardados,
@@ -705,6 +784,7 @@ async function onCierreArchivo(a, ev) {
   if (!file) return;
   const txt = document.getElementById(`txtCierre_${a.id}`);
   try {
+    await cargarLibreria("exceljs");
     const buffer = await file.arrayBuffer();
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);

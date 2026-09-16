@@ -330,9 +330,9 @@ async function cfgCargar() {
     for (const a of ARCHIVOS_TFBR) {
       const cargado = App.maestrosCargados[a.id];
       if (!cargado) continue;
-      const buffer = await cargado.wb.xlsx.writeBuffer();
+      await cargarLibreria("exceljs");
       const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buffer);
+      await wb.xlsx.load(cargado.buffer);
       cfgCopias[a.id] = cfgPrepararCopia(wb, a.id);
     }
     // Y lo último que hace el motor: que los cuatro lean las mismas cuentas. Necesita ver los
