@@ -371,6 +371,69 @@ function engancharEnHoja(wb, layout, nombreHoja, cod, rotulo) {
   };
 }
 
+// ------------------------------------------------- renglones con el nombre equivocado
+//
+// Un renglón que se llama de una cuenta y suma otra. En los dos Acumulados, el renglón
+// "Préstamo Lorena Alves" del Pasivo lee la cuenta 1140601300 PRESTAMO CUBA: el informe
+// muestra la deuda de Cuba con el nombre de Alves. No es un error de cableado —la cuenta que
+// suma es la que corresponde— sino del rótulo, así que lo que se corrige es el texto.
+//
+// El renglón se busca POR LA CUENTA QUE LEE, no por su dirección: el motor inserta y borra
+// filas en cada corrida, y una dirección fija apuntaría a otro lado el mes que viene. Y se
+// exige que el rótulo actual sea el equivocado: si alguien ya lo arregló a mano, no se toca.
+// Los renombres de renglón que hubo que hacer se resolvieron de otra forma (ver prestamos.js:
+// el renglón del Pasivo no se renombra, se vacía, porque la cuenta que lo alimentaba es de
+// activo y no tenía que estar ahí). La tabla queda vacía a propósito, con la función lista
+// para el próximo caso.
+const RENOMBRES_RENGLON = [];
+
+
+// La celda donde está escrito el rótulo de un renglón.
+function chCeldaDelRotulo(ws, fila, colImporte) {
+  for (let c = colImporte - 1; c >= 1; c--) {
+    const v = ws.getCell(fila, c).value;
+    if (typeof v === "number") continue;
+    if (v && typeof v === "object" && typeof v.formula === "string") continue;
+    const t = chTexto(ws, fila, c).trim();
+    if (!t || /^-?[\d.,]+$/.test(t)) continue;
+    return { fila, col: c };
+  }
+  return null;
+}
+
+function aplicarRenombresRenglon(wb, layout, log = () => {}) {
+  const plan = leerPlanDeCuentas(wb, layout).cuentas;
+  const hechos = [];
+
+  for (const r of RENOMBRES_RENGLON) {
+    const cuenta = plan[r.cuenta];
+    if (!cuenta) continue;                       // este archivo no tiene esa cuenta
+    const mapa = chMapaHoja(wb, layout, r.hoja);
+    if (!mapa) continue;
+
+    const filas = [cuenta].concat(cuenta.otrasFilas || []).map(f => f.fila);
+    const destino = mapa.renglones.find(x =>
+      x.filasSaldos.some(f => filas.includes(f)) && chNorm(x.rotulo) === chNorm(r.de));
+    if (!destino) continue;                      // ya renombrado, o no es este archivo
+
+    // No se pisa un nombre que ya exista en la hoja: quedarían dos renglones iguales y
+    // ninguno de los dos se podría elegir después desde el panel.
+    if (mapa.renglones.some(x => x !== destino && chNorm(x.rotulo) === chNorm(r.a))) {
+      log(`  ⚠ ${r.hoja}: no renombré "${r.de}" porque "${r.a}" ya existe en esa hoja.`);
+      continue;
+    }
+
+    const celda = chCeldaDelRotulo(mapa.ws, destino.fila, destino.cols[0].col);
+    if (!celda) continue;
+    mapa.ws.getCell(celda.fila, celda.col).value = r.a;
+    hechos.push({ hoja: r.hoja, fila: destino.fila, de: r.de, a: r.a, cuenta: r.cuenta });
+    log(`  ${r.hoja} fila ${destino.fila}: el renglón se llamaba "${r.de}" pero suma ` +
+        `${r.cuenta} ${cuenta.texto ? cuenta.texto.replace(/^\s*[\d.]+\s*/, "").trim() : ""}; ` +
+        `pasa a llamarse "${r.a}".`);
+  }
+  return hechos;
+}
+
 if (typeof module !== "undefined") {
   const cfg = require("./config_tfbr.js");
   global.derivarLayoutSaldos = cfg.derivarLayoutSaldos;
@@ -382,5 +445,6 @@ if (typeof module !== "undefined") {
     chTexto, chNorm, chRotuloDe, chMapaHoja, chHojasConfigurables,
     chRubroDeHoja, chPlanPorFila, engancharEnHoja,
     chSignoDelRenglon, chSignoDeHoja, chAplanarSignos, chHojaEditable,
+    RENOMBRES_RENGLON, aplicarRenombresRenglon, chCeldaDelRotulo,
   };
 }

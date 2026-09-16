@@ -143,6 +143,14 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // Anexo I: el valor de origen de los bienes de uso sale de las cuentas, no de un número
   // tipeado. Va después de escribir el staging porque necesita saber qué se pegó: con las
   // cuentas de bienes de uso adentro arma la fórmula, y si no vinieron escribe el importe.
+  // Renglones que se llaman de una cuenta y suman otra. Va después de expandir los rangos,
+  // que es cuando cada renglón nombra de verdad las cuentas que lo alimentan.
+  const renombres = aplicarRenombresRenglon(wb, layout, log);
+
+  // Los préstamos al personal van juntos en el Activo, en los cuatro archivos, y fuera del
+  // Pasivo — son cuentas 114, de activo, y en el Pasivo entraban restando.
+  const prestamos = consolidarPrestamos(wb, layout, log);
+
   const anexoI = completarAnexoI(wb, layout,
     { escritas, cuentasAcumulado: cuentasAcumulado || cuentasExport, campoSaldo }, log);
 
@@ -211,6 +219,8 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       rotulosAuto,
       sinRotulo,
       anexoI,
+      renglonesRenombrados: renombres,
+      prestamos,
       rangosExpandidos: rastreo.expandidos,
       rangosSalteados: rastreo.salteados,
       sinDestino,
@@ -240,6 +250,8 @@ if (typeof module !== "undefined") {
   const rr = require("./rastreo_rangos.js");
   global.expandirRangosSaldos = rr.expandirRangosSaldos;
   global.completarAnexoI = require("./anexo_i.js").completarAnexoI;
+  global.aplicarRenombresRenglon = require("./config_hojas.js").aplicarRenombresRenglon;
+  global.consolidarPrestamos = require("./prestamos.js").consolidarPrestamos;
   global.cuentasSinDestino = rr.cuentasSinDestino;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }
