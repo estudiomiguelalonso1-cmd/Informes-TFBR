@@ -112,6 +112,10 @@ function crearRenglon(wb, layout, hoja, rotulo, despuesDe, log = () => {}) {
 
   const fila = sub ? Math.min(ancla.fila + 1, sub.hasta) : ancla.fila + 1;
   const modificadas = insertRowEn(wb, hoja, fila);
+  // El renglón nuevo tiene que verse igual que sus vecinos. Insertar deja la fila sin formato,
+  // y en el informe impreso eso se nota: otra letra y el importe sin separador de miles. El
+  // modelo es el ancla, que después de insertar quedó una fila más arriba o en su lugar.
+  copiarFormatoDeFila(mapa.ws, ancla.fila >= fila ? ancla.fila + 1 : ancla.fila, fila);
   mapa.ws.getCell(fila, colRotulo.col).value = rotulo;
   mapa.ws.getCell(fila, colImporte).value = 0;
   mapa.ws.getRow(fila).hidden = false;
@@ -187,7 +191,9 @@ if (typeof module !== "undefined") {
   global.chMapaHoja = ch.chMapaHoja;
   global.chNorm = ch.chNorm;
   global.chCeldaDelRotulo = ch.chCeldaDelRotulo;
-  global.insertRowEn = require("./formula_hojas.js").insertRowEn;
+  const fh = require("./formula_hojas.js");
+  global.insertRowEn = fh.insertRowEn;
+  global.copiarFormatoDeFila = fh.copiarFormatoDeFila;
   global.ctColNumeroALetra = require("./config_tfbr.js").ctColNumeroALetra;
   module.exports = {
     RENGLONES_A_AGREGAR, agregarRenglonesFaltantes, crearRenglon, mostrarRenglonesConImporte,

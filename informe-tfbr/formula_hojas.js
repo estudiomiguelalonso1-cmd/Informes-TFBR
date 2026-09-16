@@ -88,6 +88,27 @@ function shiftAllFormulasEn(wb, nombreHoja, insertBeforeRow) {
   return modificadas;
 }
 
+// Una fila insertada con spliceRows nace SIN formato: sin tipografía, sin bordes y sin formato
+// de número. En pantalla no se nota —el valor está— pero el informe impreso muestra ese renglón
+// con otra letra y el importe sin separador de miles, y el pedido es que los cuatro salgan
+// iguales a los originales. Así que después de insertar se le copia el formato al vecino.
+//
+// Se copia celda por celda y no la fila entera porque cada columna tiene el suyo: la del
+// concepto va alineada a la izquierda y sin formato numérico, y las de importe llevan
+// "#,##0.00". Copiar el de una sola columna a todas dejaría los textos con formato de número.
+function copiarFormatoDeFila(ws, filaModelo, filaNueva, hastaCol) {
+  const modelo = ws.getRow(filaModelo);
+  const nueva = ws.getRow(filaNueva);
+  const ultima = hastaCol || Math.max(ws.columnCount || 0, modelo.cellCount || 0, 12);
+  for (let c = 1; c <= ultima; c++) {
+    const st = modelo.getCell(c).style;
+    if (st) nueva.getCell(c).style = JSON.parse(JSON.stringify(st));
+  }
+  if (modelo.height) nueva.height = modelo.height;
+  if (modelo.outlineLevel) nueva.outlineLevel = modelo.outlineLevel;
+  return ultima;
+}
+
 function insertRowEn(wb, nombreHoja, insertAtRow) {
   const ws = wb.getWorksheet(nombreHoja);
   if (!ws) throw new Error(`El archivo no tiene la hoja '${nombreHoja}'.`);
@@ -185,6 +206,7 @@ function bajarUno(formula, nombreHoja, filaBorrada, local) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { crearShifters, shiftAllFormulasEn, insertRowEn, borrarFilaEn,
+  module.exports = {
+    copiarFormatoDeFila, crearShifters, shiftAllFormulasEn, insertRowEn, borrarFilaEn,
                      quienReferenciaLaFila };
 }

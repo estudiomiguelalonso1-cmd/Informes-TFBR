@@ -121,6 +121,9 @@ function agregarRotulosAnexo(wb, archivoId, layout, planDeCuentas, log = () => {
     // se estira y el renglón nuevo queda contado
     const filaNueva = bloque.rangoTotal ? bloque.rangoTotal.hasta : bloque.hasta;
     const modificadas = insertRowEn(wb, "Anexo II", filaNueva);
+    // Formato del vecino: una fila insertada nace sin tipografía ni formato de número, y el
+    // Anexo II es una de las hojas que se imprimen.
+    copiarFormatoDeFila(ax, filaNueva + 1, filaNueva);
     const cc = RT_CC[r.cc] || 5;
     ax.getCell(filaNueva, 2).value = r.rotulo;
     ax.getCell(filaNueva, 3).value = { formula: `SUM(D${filaNueva}:F${filaNueva})` };
@@ -139,6 +142,7 @@ function agregarRotulosAnexo(wb, archivoId, layout, planDeCuentas, log = () => {
 if (typeof module !== "undefined") {
   const fh = require("./formula_hojas.js");
   global.insertRowEn = fh.insertRowEn;
+  global.copiarFormatoDeFila = fh.copiarFormatoDeFila;
   global.ctFormulaNetaAnexo = require("./config_tfbr.js").ctFormulaNetaAnexo;
   module.exports = { ROTULOS_ANEXO, agregarRotulosAnexo, rtUbicarBloque, rtQuitarTermino };
 }

@@ -141,6 +141,8 @@ function pfInsertarFilaDelMes(wb, ws, cuadro, anio, mes, valor, log) {
   }
 
   const modificadas = insertRowEn(wb, layout.sheet, cuadro.filaAInsertar);
+  // El mes nuevo del cuadro, con el formato del mes anterior (que la inserción corrió uno).
+  copiarFormatoDeFila(ws, cuadro.filaAInsertar + 1, cuadro.filaAInsertar);
   const etiqueta = pfEtiquetaDelMes(cuadro.ultimoMes.etiqueta, anio, mes);
   ws.getCell(cuadro.filaAInsertar, cuadro.colEtiqueta).value = etiqueta;
   ws.getCell(cuadro.filaAInsertar, cuadro.colValor).value = valor;
@@ -202,15 +204,24 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes }, log = 
   const hecho = [];
   const pendiente = [];
 
+  // Las fechas de todos los encabezados, en todas las hojas. Va primero porque la etiqueta del
+  // tipo de cambio es una de ellas: si el TC se escribiera antes con su propia fecha, después
+  // vendría el actualizador y la volvería a tocar, y el formato de cada archivo se perdería.
+  const fechas = actualizarFechasDelInforme(wb, periodo, log);
+  if (fechas.cambiadas.length) {
+    hecho.push(`${fechas.cambiadas.length} fecha(s) de encabezado actualizadas al cierre del período`);
+  } else if (fechas.motivo) {
+    pendiente.push(`No pude actualizar las fechas del informe: ${fechas.motivo}. Revisá los ` +
+                   `encabezados a mano antes de entregarlo.`);
+  }
+
   const tc = ubicarTcCierre(ws);
   if (tc && tcCierre !== null && tcCierre !== undefined && tcCierre !== "") {
+    // Sólo el número. La etiqueta con la fecha ya la actualizó actualizarFechasDelInforme,
+    // respetando el formato que usa cada archivo ("31/7/26" en uno, "31/07/2026" en otro).
     ws.getCell(tc.filaEtiqueta, tc.colValor).value = Number(tcCierre);
-    // la etiqueta lleva la fecha de cierre: si no se actualiza, el reporte muestra el mes pasado
-    const dia = pfUltimoDiaDelMes(anio, mes);
-    const fecha = `${String(dia).padStart(2, "0")}/${String(mes).padStart(2, "0")}/${anio}`;
-    ws.getCell(tc.filaEtiqueta, tc.colEtiqueta).value = `T.C. Reales al ${fecha}`;
-    hecho.push(`TC de cierre ${tcCierre} escrito en SALDOS (con su etiqueta al ${fecha})`);
-    log(`  TC de cierre: ${tcCierre} (etiqueta "T.C. Reales al ${fecha}").`);
+    hecho.push(`TC de cierre ${tcCierre} escrito en SALDOS`);
+    log(`  TC de cierre: ${tcCierre}.`);
   }
 
   const cuadro = ubicarCuadroDifCambio(ws);
@@ -256,7 +267,9 @@ if (typeof module !== "undefined") {
   const fh = require("./formula_hojas.js");
   const cfg = require("./config_tfbr.js");
   global.insertRowEn = fh.insertRowEn;
+  global.copiarFormatoDeFila = fh.copiarFormatoDeFila;
   global.derivarLayoutSaldos = cfg.derivarLayoutSaldos;
+  global.actualizarFechasDelInforme = require("./fechas_informe.js").actualizarFechasDelInforme;
   module.exports = {
     MESES_ES, ubicarTcCierre, ubicarCuadroDifCambio, escribirDatosDelPeriodo,
     pfAvisoFaltaFilaMes, pfColLetra, pfEtiquetaDelMes, pfInsertarFilaDelMes,

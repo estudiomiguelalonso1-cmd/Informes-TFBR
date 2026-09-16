@@ -117,9 +117,13 @@ function insertarCuentaEnSaldos(wb, layout, planDeCuentas, cuenta, log = () => {
   }
   const filaVecina = vecina.fila >= filaNueva ? vecina.fila + 1 : vecina.fila;
 
+  // Formato de toda la fila, no sólo de la columna de la clave: una fila insertada nace sin
+  // tipografía ni formato de número, y aunque SALDOS no se imprime, el plan se mira en pantalla
+  // y una fila con otra letra en el medio parece un error.
+  copiarFormatoDeFila(ws, filaVecina, filaNueva);
+
   const clave = icClaveComoLaVecina(icTexto(ws, filaVecina, layout.keyCol), cuenta.codigo, cuenta.nombre);
   ws.getCell(filaNueva, layout.keyCol).value = clave;
-  ws.getCell(filaNueva, layout.keyCol).style = ws.getCell(filaVecina, layout.keyCol).style;
 
   for (const col of [layout.deudorCol, layout.acreedorCol, layout.saldoCol]) {
     icCopiarFormula(ws, filaVecina, filaNueva, col);
@@ -221,7 +225,9 @@ function repuntarGemela(wb, hoja, filaVieja, filaNueva, log = () => {}) {
 }
 
 if (typeof module !== "undefined") {
-  global.insertRowEn = require("./formula_hojas.js").insertRowEn;
+  const fh = require("./formula_hojas.js");
+  global.insertRowEn = fh.insertRowEn;
+  global.copiarFormatoDeFila = fh.copiarFormatoDeFila;
   module.exports = {
     insertarCuentaEnSaldos, icPrefijoComun, icClaveComoLaVecina, icFilaCierraUnSubtotal,
     buscarGemela, repuntarGemela, icCodigosCasiIguales, icNombreNormalizado,
