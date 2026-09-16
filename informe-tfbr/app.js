@@ -280,7 +280,11 @@ async function procesarPeriodo() {
       const cuentasExport = App.cuentasExport[a.periodo];
       const { resumen, planDeCuentas, escritas } =
         procesarMaestroTFBR({ wb, cuentasExport, campoSaldo: a.campoSaldo, archivoId: a.id,
-                              rotulosGuardados: App.rotulosGuardados, log });
+                              rotulosGuardados: App.rotulosGuardados,
+                              // El Anexo I es información acumulada en los cuatro archivos,
+                              // así que sale del export acumulado aunque el archivo sea mensual.
+                              cuentasAcumulado: App.cuentasExport.acumulado,
+                              log });
 
       // el TC de cierre y la cifra de dif de cambio solo existen en uno de los 4 archivos:
       // escribirDatosDelPeriodo se fija solo si este los tiene, y avisa lo que no pudo cargar

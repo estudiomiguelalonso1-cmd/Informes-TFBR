@@ -62,7 +62,7 @@ function escribirStaging(wb, layout, matcheadas, log = () => {}) {
 // Corre el proceso completo para UN archivo/moneda. No guarda el archivo (eso lo decide
 // quien llama, según si va a pedir más pasos antes de bajar el .xlsx).
 function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, altaAutomatica = true,
-                              rotulosGuardados = null, log = () => {} }) {
+                              rotulosGuardados = null, cuentasAcumulado = null, log = () => {} }) {
   // Primero de todo: poner el plan de cuentas de SALDOS de acuerdo con el plan oficial. Corrige
   // los códigos tipeados con un dígito de menos y junta las filas que quedan repetidas. Va
   // antes que cualquier otra cosa porque cambia a qué fila resuelve cada código, que es lo que
@@ -140,6 +140,12 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // quedan fijadas. Al revés, una cuenta nueva que hoy el rango levanta se perdería sin avisar.
   const rastreo = expandirRangosSaldos(wb, layout, log);
 
+  // Anexo I: el valor de origen de los bienes de uso sale de las cuentas, no de un número
+  // tipeado. Va después de escribir el staging porque necesita saber qué se pegó: con las
+  // cuentas de bienes de uso adentro arma la fórmula, y si no vinieron escribe el importe.
+  const anexoI = completarAnexoI(wb, layout,
+    { escritas, cuentasAcumulado: cuentasAcumulado || cuentasExport, campoSaldo }, log);
+
   // Y con todo ya cableado, el control que faltaba: plata de este mes que no llega a ninguna
   // hoja. Entra en los totales de SALDOS —el balance cierra igual— pero no está en ningún
   // estado, y mirando el resultado no hay forma de darse cuenta.
@@ -204,6 +210,7 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       sinEnganchar: sinEnganchar.map(a => ({ codigo: a.codigo, clave: a.clave })),
       rotulosAuto,
       sinRotulo,
+      anexoI,
       rangosExpandidos: rastreo.expandidos,
       rangosSalteados: rastreo.salteados,
       sinDestino,
@@ -232,6 +239,7 @@ if (typeof module !== "undefined") {
   global.cuentasSinRotulo = cn.cuentasSinRotulo;
   const rr = require("./rastreo_rangos.js");
   global.expandirRangosSaldos = rr.expandirRangosSaldos;
+  global.completarAnexoI = require("./anexo_i.js").completarAnexoI;
   global.cuentasSinDestino = rr.cuentasSinDestino;
   module.exports = { emparejarConPlan, escribirStaging, procesarMaestroTFBR };
 }
