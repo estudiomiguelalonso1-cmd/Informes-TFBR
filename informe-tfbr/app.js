@@ -18,6 +18,7 @@ const App = {
   validaciones: {},     // archivoId -> resultado de validarRecalculado
   alineacion: null,     // resultado de alinearHojas sobre los 4 de esta corrida
   rotulosGuardados: {}, // codigo -> rótulo del Anexo II (null = sin rótulo, decidido)
+  configuracion: null,  // lo que la persona configuró: ver config_guardada.js
   logLineas: [],
 };
 
@@ -134,10 +135,21 @@ async function cargarRotulosGuardados() {
   try {
     const r = await ghtLeerEstado();
     App.rotulosGuardados = (r && r.estado && r.estado.rotulosCuentas) || {};
+    App.configuracion = cgNormalizar(r && r.estado && r.estado.configuracion);
   } catch (e) {
     App.rotulosGuardados = {};
-    log("No pude leer las decisiones de rótulo guardadas: " + e.message);
+    App.configuracion = cgNormalizar(null);
+    log("No pude leer la configuración guardada: " + e.message);
   }
+}
+
+// Guarda la configuración en estado_tfbr.json, sin pisar el resto del estado.
+async function guardarConfiguracion(config, mensaje) {
+  const previo = await ghtLeerEstado();
+  const estado = (previo && previo.estado) || { historial: [] };
+  estado.configuracion = cgNormalizar(config);
+  await ghtGuardarEstado(estado, mensaje);
+  App.configuracion = estado.configuracion;
 }
 
 async function revisarMaestrosExistentes() {
@@ -282,6 +294,7 @@ async function procesarPeriodo() {
       const { resumen, planDeCuentas, escritas } =
         procesarMaestroTFBR({ wb, cuentasExport, campoSaldo: a.campoSaldo, archivoId: a.id,
                               rotulosGuardados: App.rotulosGuardados,
+                              configuracion: App.configuracion,
                               // El Anexo I es información acumulada en los cuatro archivos,
                               // así que sale del export acumulado aunque el archivo sea mensual.
                               cuentasAcumulado: App.cuentasExport.acumulado,

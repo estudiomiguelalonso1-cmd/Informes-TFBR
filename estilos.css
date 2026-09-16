@@ -607,3 +607,22 @@ tr.cfg-editor .cfg-editor-caja{
   background:var(--acento); border-color:var(--acento); color:#fff; font-weight:600;
 }
 .cfg-btn.primario:hover{background:var(--acento); border-color:var(--acento); color:#fff; filter:brightness(1.08);}
+
+/* Encabezado de rubro dentro de la lista: activo, pasivo, resultados. Con 940 cuentas una
+   lista corrida no se lee. */
+table.cfg tr.cfg-rubro td{
+  padding:18px 2px 7px; border-bottom:1px solid var(--borde-fuerte); background:transparent;
+  font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--tinta-media);
+}
+table.cfg tr.cfg-rubro:first-child td{padding-top:4px;}
+table.cfg tr.cfg-rubro:hover td{background:transparent;}
+.cfg-rubro-n{
+  margin-left:8px; padding:1px 7px; border-radius:100px;
+  background:var(--fondo-alto); color:var(--tinta-suave);
+  font-size:11px; font-weight:600; letter-spacing:0;
+}
+
+/* Una cuenta marcada como que no se usa se ve apagada, pero se sigue viendo. */
+table.cfg tr.cfg-apagada td{opacity:.55;}
+.cfg-chip.tenue{color:var(--tinta-suave); background:var(--fondo-alto); border-color:var(--borde);}

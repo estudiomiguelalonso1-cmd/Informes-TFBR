@@ -62,7 +62,8 @@ function escribirStaging(wb, layout, matcheadas, log = () => {}) {
 // Corre el proceso completo para UN archivo/moneda. No guarda el archivo (eso lo decide
 // quien llama, según si va a pedir más pasos antes de bajar el .xlsx).
 function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, altaAutomatica = true,
-                              rotulosGuardados = null, cuentasAcumulado = null, log = () => {} }) {
+                              rotulosGuardados = null, cuentasAcumulado = null,
+                              configuracion = null, log = () => {} }) {
   // Primero de todo: poner el plan de cuentas de SALDOS de acuerdo con el plan oficial. Corrige
   // los códigos tipeados con un dígito de menos y junta las filas que quedan repetidas. Va
   // antes que cualquier otra cosa porque cambia a qué fila resuelve cada código, que es lo que
@@ -159,17 +160,30 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // con ese nombre y lo crea ese paso, así que corriendo antes no había dónde mandarlas.
   const asignaciones = aplicarAsignaciones(wb, layout, log);
 
+  // Y encima de todo eso, lo que la persona configuró desde el panel. Va último de los pasos
+  // de cableado, a propósito: una decisión tomada a mano manda sobre cualquier regla del
+  // código. Ese es el punto de que el sistema sea configurable sin tocar el programa.
+  const configurado = aplicarConfiguracion(wb, layout, configuracion, log);
+  layout = configurado.layout || layout;
+
   const anexoI = completarAnexoI(wb, layout,
     { escritas, cuentasAcumulado: cuentasAcumulado || cuentasExport, campoSaldo }, log);
 
   // Y con todo ya cableado, el control que faltaba: plata de este mes que no llega a ninguna
   // hoja. Entra en los totales de SALDOS —el balance cierra igual— pero no está en ningún
   // estado, y mirando el resultado no hay forma de darse cuenta.
+  // La configuración pudo insertar filas: el plan hay que releerlo antes de los controles.
+  ({ cuentas: planDeCuentas, duplicadas } = leerPlanDeCuentas(wb, layout));
+
   // Lo último: que no quede oculto ningún renglón con importe. Va al final porque insertar
   // filas reacomoda las marcas de oculto.
   const mostrados = mostrarRenglonesConImporte(wb, layout, planDeCuentas, escritas, log);
 
-  const sinDestino = cuentasSinDestino(wb, layout, planDeCuentas, escritas);
+  // Las que la persona marcó como que no van a ningún renglón no se denuncian: quedaron así
+  // a propósito, y avisar todos los meses enseña a ignorar el aviso.
+  const excluidas = cuentasExcluidas(configuracion);
+  const sinDestino = cuentasSinDestino(wb, layout, planDeCuentas, escritas)
+    .filter(c => !excluidas.has(c.cod));
   for (const c of sinDestino) {
     log(`  ⚠ ${c.cod} ${c.nom} tiene ${c.importe.toFixed(2)} y ninguna hoja la lee: ` +
         `su importe no llega a ningún estado.`);
@@ -233,6 +247,7 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
       anexoI,
       renglonesRenombrados: renombres,
       asignaciones,
+      configurado,
       renglonesNuevos,
       renglonesMostrados: mostrados,
       prestamos,
@@ -267,6 +282,9 @@ if (typeof module !== "undefined") {
   global.completarAnexoI = require("./anexo_i.js").completarAnexoI;
   global.aplicarRenombresRenglon = require("./config_hojas.js").aplicarRenombresRenglon;
   global.aplicarAsignaciones = require("./config_hojas.js").aplicarAsignaciones;
+  const cg = require("./config_guardada.js");
+  global.aplicarConfiguracion = cg.aplicarConfiguracion;
+  global.cuentasExcluidas = cg.cuentasExcluidas;
   global.agregarRenglonesFaltantes = require("./renglones_faltantes.js").agregarRenglonesFaltantes;
   global.mostrarRenglonesConImporte = require("./renglones_faltantes.js").mostrarRenglonesConImporte;
   global.consolidarPrestamos = require("./prestamos.js").consolidarPrestamos;

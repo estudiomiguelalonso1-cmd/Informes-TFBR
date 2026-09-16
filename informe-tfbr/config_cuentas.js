@@ -15,11 +15,29 @@
 // en el nuevo. Los cambios quedan en memoria y recién se suben al apretar Guardar.
 
 const CFG_ESTADOS = {
-  ok:      { texto: "OK",                    clase: "ok"  },
-  sin:     { texto: "Sin rótulo",            clase: "bad" },
-  varias:  { texto: "En varios",             clase: "bad" },
-  difiere: { texto: "Difiere entre archivos", clase: "bad" },
+  ok:       { texto: "OK",                     clase: "ok"    },
+  sin:      { texto: "Sin rótulo",             clase: "bad"   },
+  varias:   { texto: "En varios",              clase: "bad"   },
+  difiere:  { texto: "Difiere entre archivos", clase: "bad"   },
+  // La cuenta existe en el plan oficial pero ningún balance la tiene todavía. No es un
+  // problema: se configura igual, y el día que el sumas y saldos la traiga el motor le crea
+  // la fila y la engancha donde quedó dicho.
+  fuera:    { texto: "Sin usar",               clase: "tenue" },
+  // La persona decidió que no va a ningún renglón. No se vuelve a preguntar por ella.
+  excluida: { texto: "No se usa",              clase: "tenue" },
 };
+
+// Los rubros del sumas y saldos, para agrupar la lista. Con 940 cuentas, una lista corrida
+// no se puede leer.
+const CFG_RUBROS = [
+  { digito: "1", texto: "Activo" },
+  { digito: "2", texto: "Pasivo" },
+  { digito: "3", texto: "Patrimonio neto" },
+  { digito: "4", texto: "Resultados" },
+  { digito: "5", texto: "Orden" },
+];
+const cfgRubroDe = (cod) => String(cod).trim()[0];
+const cfgNombreRubro = (d) => (CFG_RUBROS.find(r => r.digito === d) || { texto: "Otras" }).texto;
 
 let cfgCopias = null;      // { archivoId: workbook } — copias en memoria, ya preparadas
 let cfgCambios = [];
@@ -32,14 +50,12 @@ let cfgHoja = "Anexo II";   // la solapa abierta
 // quedaron sin rótulo" o "cuáles difieren entre archivos", que son preguntas distintas y
 // llevan a acciones distintas.
 const CFG_FILTROS = [
-  { id: "revisar", texto: "A revisar",  incluye: (f) => f.estado !== "ok" },
-  { id: "sin",     texto: "Sin rótulo", incluye: (f) => f.estado === "sin" },
-  { id: "difiere", texto: "Difieren",   incluye: (f) => f.estado === "difiere" },
-  { id: "varias",  texto: "En varios",  incluye: (f) => f.estado === "varias" },
-  { id: "ok",      texto: "Con rótulo", incluye: (f) => f.estado === "ok" },
-  { id: "todas",   texto: "Todas",      incluye: () => true },
+  { id: "sin",    texto: "Sin rótulo", incluye: (f) => f.estado === "sin" || f.estado === "fuera" },
+  { id: "varias", texto: "En varios",  incluye: (f) => f.estado === "varias" || f.estado === "difiere" },
+  { id: "ok",     texto: "Con rótulo", incluye: (f) => f.estado === "ok" },
+  { id: "todas",  texto: "Todas",      incluye: () => true },
 ];
-let cfgFiltroEstado = "revisar";
+let cfgFiltroEstado = "sin";
 
 function cfgTexto(ws, r, c) {
   const v = ws.getCell(r, c).value;
@@ -103,8 +119,10 @@ function cfgEstadoDe(wb, hoja) {
     }
   }
 
-  const esAnexoII = /anexo\s*ii/i.test(hoja);
-  const rubro = esAnexoII ? null : chRubroDeHoja(wb, layout, hoja, porFila);
+  const esAnexoII = esAnexoIIHoja(hoja);
+  // El Anexo II abre el gasto: su rubro es resultados, aunque la lista se filtre además por
+  // el plan de centros de costo.
+  const rubro = esAnexoII ? "4" : chRubroDeHoja(wb, layout, hoja, porFila);
 
   const porCuenta = {};
   for (const info of Object.values(porFila)) {
@@ -134,8 +152,10 @@ function cfgEstadoDe(wb, hoja) {
     vistos.add(k); return true;
   }).sort((a, b) => a.rotulo.localeCompare(b.rotulo, "es"));
 
-  return { porCuenta, rotulos: paraElegir, layout, hoja };
+  return { porCuenta, rotulos: paraElegir, layout, hoja, rubro };
 }
+
+const esAnexoIIHoja = (h) => /anexo\s*ii/i.test(String(h || ""));
 
 function cfgNumero(ws, fila, col) {
   const v = ws.getCell(fila, col).value;
@@ -181,7 +201,26 @@ function cfgVistaUnica(hoja = cfgHoja) {
       saldoMax: Math.max(...Object.values(saldos).map(Math.abs)),
     });
   }
-  const orden = { difiere: 0, varias: 1, sin: 2, ok: 3 };
+  // Las del plan oficial que ningún balance tiene todavía. Aparecen para poder configurarlas
+  // de antemano: así, cuando el sumas y saldos las traiga por primera vez, ya está decidido a
+  // dónde van y nadie tiene que acordarse de nada.
+  const rubro = ids.length ? estados[ids[0]].rubro : null;
+  const excluidas = cuentasExcluidas(App.configuracion);
+  if (typeof PLAN_OFICIAL === "object") {
+    for (const [cod, nom] of Object.entries(PLAN_OFICIAL)) {
+      if (codigos.has(cod)) continue;
+      if (rubro && cfgRubroDe(cod) !== rubro) continue;
+      if (esAnexoIIHoja(hoja) && !PLAN_CENTROS_COSTO.has(cod)) continue;
+      filas.push({
+        cod, nom, estado: excluidas.has(cod) ? "excluida" : "fuera",
+        porArchivo: {}, saldos: {}, rotulos: [], enArchivos: [], saldoMax: 0,
+      });
+    }
+  }
+  // Y las que están en los archivos pero la persona marcó como que no van a ningún renglón.
+  for (const f of filas) if (excluidas.has(f.cod)) f.estado = "excluida";
+
+  const orden = { difiere: 0, varias: 1, sin: 2, ok: 3, fuera: 4, excluida: 5 };
   filas.sort((a, b) => (orden[a.estado] - orden[b.estado]) ||
                        (b.saldoMax - a.saldoMax) || a.cod.localeCompare(b.cod));
 
@@ -228,6 +267,14 @@ function cfgHojasDisponibles() {
     const layout = derivarLayoutSaldos(wb);
     const buenas = [];
     for (const h of chHojasConfigurables(wb, layout)) {
+      // El Anexo I no se configura desde acá en ningún archivo, ni siquiera en los que serían
+      // editables: su valor de origen lo llena anexo_i.js desde las cuentas, y las columnas de
+      // amortización se cargan a mano. Dejarlo como solapa mostraba las 140 cuentas de activo
+      // del plan oficial como si les faltara rótulo, y ninguna va ahí.
+      if (/anexo\s*i$/i.test(h.hoja)) {
+        if (!fuera[h.hoja]) fuera[h.hoja] = { hoja: h.hoja, motivo: "el valor de origen sale de las cuentas y las amortizaciones se cargan a mano", archivo: a.label };
+        continue;
+      }
       const ed = chHojaEditable(wb, layout, h.hoja);
       if (ed.editable) buenas.push(h.hoja);
       else if (!fuera[h.hoja]) fuera[h.hoja] = { hoja: h.hoja, motivo: ed.motivo, archivo: a.label };
@@ -379,50 +426,84 @@ function cfgPintar() {
     return `${texto.slice(0, i)}<mark>${texto.slice(i, i + filtro.length)}</mark>${texto.slice(i + filtro.length)}`;
   };
 
+  // Agrupadas por rubro del sumas y saldos. Con 940 cuentas, una lista corrida no se lee.
+  const porRubro = new Map();
+  for (const f of visibles) {
+    const d = cfgRubroDe(f.cod);
+    if (!porRubro.has(d)) porRubro.set(d, []);
+    porRubro.get(d).push(f);
+  }
+  const rubrosOrdenados = [...porRubro.keys()].sort();
+
   let html = "<table class='cfg'><thead><tr><th>Cuenta</th>" +
              `<th>Renglón de ${cfgHoja}</th><th></th></tr></thead><tbody>`;
-  for (const f of visibles) {
-    const e = CFG_ESTADOS[f.estado];
-    const chip = `<span class="cfg-chip ${e.clase}">${e.texto}</span>`;
-    let rots;
-    if (f.estado === "difiere") {
-      rots = `<span class="cfg-rot">—${chip}</span>` +
-        ARCHIVOS_TFBR.filter(a => f.porArchivo[a.id])
-          .map(a => `<span class="cfg-porarch"><b>${a.label}</b> · ${f.porArchivo[a.id].join(" + ") || "sin rótulo"}</span>`)
-          .join("");
-    } else {
-      rots = `<span class="cfg-rot">${f.rotulos.length ? resaltar(f.rotulos.join(" + ")) : "—"}` +
-             `${f.estado === "ok" ? "" : chip}</span>`;
-    }
-    const editando = cfgEditando === f.cod;
-    html += `<tr${editando ? ' class="cfg-abierta"' : ""}>` +
-      `<td><span class="mono">${resaltar(f.cod)}</span><span class="cfg-nom">${resaltar(f.nom)}</span></td>` +
-      `<td>${rots}</td>` +
-      `<td><button class="cfg-btn" onclick="cfgElegir(${editando ? "null" : "'" + f.cod + "'"})">` +
-      `${editando ? "Cerrar" : "Cambiar"}</button></td>` +
-      `</tr>`;
 
-    if (editando) {
-      // Los rótulos que ya tienen cuentas van primero, con cuántas: en una lista de cien, el
-      // que se busca casi siempre es uno que ya está en uso, y los vacíos son los que sobran
-      // de limpiezas anteriores.
-      const usados = {};
-      filas.forEach(x => x.rotulos.forEach(r => { usados[cfgNorm(r)] = (usados[cfgNorm(r)] || 0) + 1; }));
-      const actual = cfgNorm(f.rotulos[0] || "");
-      const opts = rotulos
-        .map(r => ({ r, n: usados[cfgNorm(r)] || 0 }))
-        .sort((a, b) => (b.n - a.n) || a.r.localeCompare(b.r, "es"))
-        .map(x => `<option value="${x.r.replace(/"/g, "&quot;")}"` +
-                  `${cfgNorm(x.r) === actual ? " selected" : ""}>` +
-                  `${x.r}${x.n ? ` (${x.n})` : " — vacío"}</option>`)
-        .join("");
-      html += `<tr class="cfg-editor"><td colspan="3">` +
-        `<div class="cfg-editor-caja">` +
-        `<span>Mover <b>${f.nom}</b> a</span>` +
-        `<select id="cfgDestino">${opts}</select>` +
-        `<button class="cfg-btn primario" onclick="cfgAplicar('${f.cod}')">Aplicar a los 4</button>` +
-        `<button class="cfg-btn" onclick="cfgElegir(null)">Cancelar</button>` +
-        `</div></td></tr>`;
+  for (const d of rubrosOrdenados) {
+    const delRubro = porRubro.get(d);
+    // El encabezado del rubro sólo tiene sentido si hay más de uno a la vista.
+    if (rubrosOrdenados.length > 1) {
+      html += `<tr class="cfg-rubro"><td colspan="3">` +
+              `${cfgNombreRubro(d)}<span class="cfg-rubro-n">${delRubro.length}</span></td></tr>`;
+    }
+
+    for (const f of delRubro) {
+      const e = CFG_ESTADOS[f.estado];
+      const chip = `<span class="cfg-chip ${e.clase}">${e.texto}</span>`;
+      let rots;
+      if (f.estado === "difiere") {
+        rots = `<span class="cfg-rot">—${chip}</span>` +
+          ARCHIVOS_TFBR.filter(a => f.porArchivo[a.id])
+            .map(a => `<span class="cfg-porarch"><b>${a.label}</b> · ${f.porArchivo[a.id].join(" + ") || "sin rótulo"}</span>`)
+            .join("");
+      } else if (f.estado === "fuera" || f.estado === "excluida") {
+        const dicho = (App.configuracion && App.configuracion.cuentas[f.cod]) || null;
+        const destino = dicho && dicho.rotulo ? ` <span class="cfg-rot">${dicho.rotulo}</span>` : "";
+        rots = `${chip}${destino}` +
+          (f.estado === "fuera" && !destino
+            ? `<span class="cfg-porarch">Ningún balance la tiene todavía. Si la configurás ahora, ` +
+              `se engancha sola cuando el sumas y saldos la traiga.</span>`
+            : "");
+      } else {
+        rots = `<span class="cfg-rot">${f.rotulos.length ? resaltar(f.rotulos.join(" + ")) : "—"}` +
+               `${f.estado === "ok" ? "" : chip}</span>`;
+      }
+
+      const editando = cfgEditando === f.cod;
+      const acciones = f.estado === "excluida"
+        ? `<button class="cfg-btn" onclick="cfgReincorporar('${f.cod}')">Volver a usar</button>`
+        : `<button class="cfg-btn" onclick="cfgElegir(${editando ? "null" : "'" + f.cod + "'"})">` +
+          `${editando ? "Cerrar" : "Cambiar"}</button>`;
+
+      html += `<tr${editando ? ' class="cfg-abierta"' : ""}${f.estado === "excluida" ? ' class="cfg-apagada"' : ""}>` +
+        `<td><span class="mono">${resaltar(f.cod)}</span><span class="cfg-nom">${resaltar(f.nom)}</span></td>` +
+        `<td>${rots}</td>` +
+        `<td>${acciones}</td>` +
+        `</tr>`;
+
+      if (editando) {
+        // Los rótulos que ya tienen cuentas van primero, con cuántas: en una lista de cien, el
+        // que se busca casi siempre es uno que ya está en uso, y los vacíos son los que sobran
+        // de limpiezas anteriores.
+        const usados = {};
+        filas.forEach(x => x.rotulos.forEach(r => { usados[cfgNorm(r)] = (usados[cfgNorm(r)] || 0) + 1; }));
+        const dicho = (App.configuracion && App.configuracion.cuentas[f.cod]) || null;
+        const actual = cfgNorm(f.rotulos[0] || (dicho && dicho.rotulo) || "");
+        const opts = rotulos
+          .map(r => ({ r, n: usados[cfgNorm(r)] || 0 }))
+          .sort((a, b) => (b.n - a.n) || a.r.localeCompare(b.r, "es"))
+          .map(x => `<option value="${x.r.replace(/"/g, "&quot;")}"` +
+                    `${cfgNorm(x.r) === actual ? " selected" : ""}>` +
+                    `${x.r}${x.n ? ` (${x.n})` : " — vacío"}</option>`)
+          .join("");
+        html += `<tr class="cfg-editor"><td colspan="3">` +
+          `<div class="cfg-editor-caja">` +
+          `<span>Mover <b>${f.nom}</b> a</span>` +
+          `<select id="cfgDestino">${opts}</select>` +
+          `<button class="cfg-btn primario" onclick="cfgAplicar('${f.cod}')">Aplicar a los 4</button>` +
+          `<button class="cfg-btn" onclick="cfgExcluir('${f.cod}')">No usar esta cuenta</button>` +
+          `<button class="cfg-btn" onclick="cfgElegir(null)">Cancelar</button>` +
+          `</div></td></tr>`;
+      }
     }
   }
   html += "</tbody></table>";
@@ -451,9 +532,21 @@ function cfgAplicar(cod) {
     const nombre = f ? f.nom : cod;
     const r = cfgMoverEnTodos(cod, destino);
 
+    // Queda anotado SIEMPRE, aunque no se haya podido mover en ningún archivo: si la cuenta
+    // todavía no existe en ninguna hoja SALDOS, la decisión es justamente lo que hace que el
+    // motor la enganche el día que aparezca.
+    cfgAnotar(cod, { hoja: cfgHoja, rotulo: destino });
+
     if (!r.hechos.length) {
-      estadoUi("cfgStatus",
-        `No la moví en ningún archivo. ${r.fallos.map(x => `${x.archivo}: ${x.motivo}`).join("; ")}`, "bad");
+      const sinFila = f && (f.estado === "fuera" || f.estado === "excluida");
+      estadoUi("cfgStatus", sinFila
+        ? `"${nombre}" queda configurada en "${destino}". Ningún balance la tiene todavía: se ` +
+          `engancha sola cuando el sumas y saldos la traiga.`
+        : `No la moví en ningún archivo. ${r.fallos.map(x => `${x.archivo}: ${x.motivo}`).join("; ")}`,
+        sinFila ? "ok" : "bad");
+      cfgCambios.push({ cod, nombre, a: destino, hoja: cfgHoja, archivos: 0 });
+      cfgEditando = null;
+      cfgPintar();
       return;
     }
 
@@ -481,6 +574,41 @@ function cfgBuscar(v) { cfgFiltro = v; cfgEditando = null; cfgPintar(); }
 
 function cfgVerEstado(id) { cfgFiltroEstado = id; cfgEditando = null; cfgPintar(); }
 
+// La decisión se anota en la configuración además de escribirse en los archivos. Las dos cosas
+// hacen falta: la fórmula es lo que el Excel usa este mes, y la configuración es lo que hace
+// que la decisión se vuelva a aplicar el mes que viene y en los archivos donde la cuenta
+// todavía no existe.
+function cfgAnotar(cod, decision) {
+  if (!App.configuracion) App.configuracion = cgNormalizar(null);
+  if (decision === null) delete App.configuracion.cuentas[cod];
+  else App.configuracion.cuentas[cod] = decision;
+}
+
+// "No usar esta cuenta": queda anotado que no va a ningún renglón, y el control de cuentas sin
+// destino deja de denunciarla. No se borra nada del Excel — si el sumas y saldos la trae, se
+// pega igual, porque si no el Debe dejaría de dar igual que el Haber.
+function cfgExcluir(cod) {
+  const { filas } = cfgVistaUnica();
+  const f = filas.find(x => x.cod === cod);
+  const nombre = f ? f.nom : cod;
+  cfgAnotar(cod, { excluida: true });
+  cfgCambios.push({ cod, nombre, a: "no se usa", hoja: cfgHoja, archivos: 0, tipo: "excluir" });
+  cfgEditando = null;
+  estadoUi("cfgStatus", `"${nombre}" queda marcada como que no se usa. No se va a volver a ` +
+                        `preguntar por ella ni a avisar que está sin rótulo.`, "ok");
+  cfgPintar();
+}
+
+function cfgReincorporar(cod) {
+  const { filas } = cfgVistaUnica();
+  const f = filas.find(x => x.cod === cod);
+  const nombre = f ? f.nom : cod;
+  cfgAnotar(cod, null);
+  cfgCambios.push({ cod, nombre, a: "vuelve a usarse", hoja: cfgHoja, archivos: 0, tipo: "reincorporar" });
+  estadoUi("cfgStatus", `"${nombre}" vuelve a la lista. Asignale un renglón.`, "ok");
+  cfgPintar();
+}
+
 async function guardarConfigCuentas() {
   if (!cfgCambios.length) return;
   document.getElementById("btnGuardarCuentas").disabled = true;
@@ -495,6 +623,8 @@ async function guardarConfigCuentas() {
       await ghtGuardarMaestro(id, buf, `Configurar cuentas: ${detalle}`.slice(0, 240));
       log(`Configuración guardada en ${id}`);
     }
+    // Y las decisiones, que son las que se vuelven a aplicar el mes que viene.
+    await guardarConfiguracion(App.configuracion, `Configurar cuentas: ${detalle}`.slice(0, 240));
     estadoUi("cfgStatus", `Guardado en los 4. ${cfgCambios.length} cambio(s).`, "ok");
     cfgCambios = [];
     await revisarMaestrosExistentes();
