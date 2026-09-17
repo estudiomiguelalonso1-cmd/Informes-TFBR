@@ -2,18 +2,24 @@
 //
 // Es un residuo, no un dato que alguien busque en algún lado: las cuentas de activo, pasivo y
 // patrimonio se convierten al tipo de cambio de cierre y las de resultado vienen a los suyos,
-// así que la suma de todas no da cero. Lo que sobra ES la diferencia de cambio del período, y
-// por eso se puede calcular.
+// así que la suma de todas no da cero. Lo que sobra ES la diferencia de cambio del período que
+// cubre el archivo: la del MES en el Mensual R$ y la del AÑO en el Acumulado R$.
 //
-// La referencia son los informes de julio 2026 que hizo contaduría (INFORMES BASE), que no
-// pasaron por el sistema:
+// La fila del mes del cuadro de meses —que solo existe en el Acumulado R$— se calcula como el
+// residuo del año menos lo que ya suma el resto del cuadro. No se toma del Mensual R$, aunque
+// sea lo natural, porque el export mensual de Onvio no trae los movimientos de las cuentas de
+// patrimonio: en agosto de 2026 el acumulado dice que "3310000000 RNA EJERCICIO ANTERIOR" se
+// movió -21.174,07 y el mensual no lo reporta. Con esas cuentas afuera el cuadro quedaba corto
+// en 12.413,97 y el balance en reales no cerraba.
 //
-//   Mensual R$   → residuo 3.231,78   = la fila JULIO del cuadro de meses del Acumulado R$
-//   Acumulado R$ → residuo 107.528,26 = el total de ese cuadro y la línea del plan
+// La referencia es el cierre de julio 2026, que hizo contaduría a mano y no pasó por el
+// sistema. Su Acumulado R$ tiene 107.528,26 en la línea del plan y 3.231,78 en la fila de JULIO
+// del cuadro.
 //
-// Lo que este test cuida es que el número salga de las cuentas y siga dando eso. Si alguna vez
-// deja de dar, no es que el test esté viejo: es que el residuo cambió y hay que entender por
-// qué antes de mover el número esperado.
+// Sobre los centavos: el sistema redondea el saldo de cada cuenta a centavos —es la regla de
+// conversión, ver test_reales.js— y contaduría pega los saldos con todos los decimales. Sobre
+// ~150 cuentas eso da 33 centavos de diferencia en el acumulado y 7 en el mensual. No es un
+// error de método: es el redondeo, y por eso la comparación admite medio peso.
 //
 // Correr con: node informe-tfbr/test_dif_cambio.js
 
@@ -26,45 +32,30 @@ global.XLSX = XLSX;
 const P = require("./parser_tfbr.js");
 const motor = require("./motor_tfbr.js");
 const pf = require("./periodo_tfbr.js");
+const cfg = require("./config_tfbr.js");
 
 const PERIODO = "2026-07";
-const TC = 293.17575;          // el que tiene escrito el Acumulado R$ de julio
+const TC = 293.17575;            // el que tiene escrito el Acumulado R$ de julio
+const CONTADURIA_ANIO = 107528.26;
+const CONTADURIA_MES = 3231.78;
+const CENTAVOS = 0.5;            // lo que puede mover el redondeo por cuenta
 
-// Lo que puso contaduría en julio, y lo que da el sistema. No son el mismo número y la
-// diferencia está entendida:
-//
-//   Mensual R$   contaduría 3.231,776840…   sistema 3.231,85   (7 centavos)
-//     Contaduría pega los saldos con todos los decimales; el sistema los redondea a centavos,
-//     que es como vienen en el sumas y saldos convertido (ver test_reales.js). Cada uno cierra
-//     con su propio número: el residuo se calcula sobre lo que se pegó.
-//
-//   Acumulado R$ contaduría 107.528,26       sistema 104.171,92  (3.356,34)
-//     El informe de julio tiene pegada "4212100000 FLETES" por 3.356,67 y el export acumulado
-//     de julio no la trae. El balance cierra igual, pero el acumulado del año sale corto. Por
-//     eso escribirDatosDelPeriodo avisa cuando el cuadro y las cuentas no dan lo mismo.
-const CONTADURIA_MES = 3231.776840406703;
-const CONTADURIA_ACUM = 107528.26;
-const DEL_MES = 3231.85;
-const RESIDUO_ACUM = 104171.92;
-const FLETES = 3356.67;
-
-function leerExport(periodo) {
-  const buf = fs.readFileSync(path.join(__dirname, "..", "inputs", PERIODO, `sumas_y_saldos_${periodo}.xls`));
-  const libro = XLSX.read(buf, { type: "buffer" });
+function leerExport(cual) {
+  const f = path.join(__dirname, "..", "inputs", PERIODO, `sumas_y_saldos_${cual}_completo.xls`);
+  const libro = XLSX.read(fs.readFileSync(f), { type: "buffer" });
   const ws = libro.Sheets[libro.SheetNames[0]];
   return P.parseSumasYSaldosTFBR(XLSX.utils.sheet_to_json(ws, { header: 1 }), ws["!merges"]).cuentas;
 }
 
-async function correr(archivo, periodo, campo, id, cuentasAcumulado, difCambioDelMes) {
+async function correr(maestro, id, cuentas, cuentasAcumulado) {
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(path.join(__dirname, archivo));
+  await wb.xlsx.readFile(path.join(__dirname, maestro));
   const { escritas } = motor.procesarMaestroTFBR({
-    wb, cuentasExport: periodo.cuentas, campoSaldo: campo, archivoId: id,
+    wb, cuentasExport: cuentas, campoSaldo: "saldo_brl", archivoId: id,
     cuentasAcumulado, log: () => {},
   });
   const datos = pf.escribirDatosDelPeriodo(wb, {
-    periodo: PERIODO, diaCierre: 31, tcCierre: String(TC),
-    escritas, difCambioDelMes,
+    periodo: PERIODO, diaCierre: 31, tcCierre: String(TC), escritas,
   }, () => {});
   return { wb, datos };
 }
@@ -76,65 +67,76 @@ async function correr(archivo, periodo, campo, id, cuentasAcumulado, difCambioDe
   const mensual = P.convertirSaldosEnReales(leerExport("mensual"), TC);
   const acumulado = P.convertirSaldosEnReales(leerExport("acumulado"), TC);
 
-  // 1. El Mensual R$ calcula la cifra del mes.
-  const m = await correr("base_bm_brl.xlsx", { cuentas: mensual }, "saldo_brl",
-                         "balance_mensual_brl", acumulado, null);
-  console.log(`\n== Mensual R$: residuo ${m.datos.residuo === null ? "—" : m.datos.residuo.toFixed(2)} ` +
-              `(contaduría puso ${CONTADURIA_MES.toFixed(2)}; ${Math.abs(DEL_MES - CONTADURIA_MES).toFixed(2)} de redondeo)`);
-  if (m.datos.residuo === null || Math.abs(m.datos.residuo - DEL_MES) > 0.02) {
-    fallo(`el residuo del Mensual R$ tendría que dar ${DEL_MES.toFixed(2)}`);
+  // 1. El Mensual R$: su residuo es la diferencia del mes, y va a su propia línea.
+  const m = await correr("base_bm_brl.xlsx", "balance_mensual_brl", mensual, acumulado);
+  console.log(`\n== Mensual R$: residuo ${m.datos.residuo.toFixed(2)} ` +
+              `(contaduría ${CONTADURIA_MES.toFixed(2)})`);
+  if (Math.abs(m.datos.residuo - CONTADURIA_MES) > CENTAVOS) {
+    fallo(`el residuo del Mensual R$ tendría que dar ${CONTADURIA_MES.toFixed(2)}`);
   }
-
-  // Y lo escribe en su propia línea del plan, sin que nadie lo tipee.
   {
     const ws = m.wb.getWorksheet("SALDOS");
-    const layout = require("./config_tfbr.js").derivarLayoutSaldos(m.wb);
+    const layout = cfg.derivarLayoutSaldos(m.wb);
     const linea = pf.pfUbicarLineaDifCambio(ws, layout);
-    const v = linea ? ws.getCell(linea.fila, layout.acreedorCol).value : null;
-    console.log(`   línea "DIFERENCIA DE CAMBIO" (fila ${linea ? linea.fila : "—"}): ${v}`);
-    if (typeof v !== "number" || Math.abs(v - DEL_MES) > 0.02) {
-      fallo(`la línea del Mensual R$ quedó en ${v} y tendría que decir ${DEL_MES.toFixed(2)}`);
+    if (!linea) fallo("el Mensual R$ no tiene línea de diferencia de cambio");
+    else {
+      // La línea tiene que dejar el balance en cero: su aporte es deudora menos acreedora, y
+      // eso tiene que ser justo lo contrario del residuo.
+      const g = (col) => {
+        const v = ws.getCell(linea.fila, col).value;
+        if (typeof v === "number") return v;
+        if (v && typeof v === "object" && (v.formula || v.sharedFormula)) {
+          // la fórmula replica max(saldo,0) / max(-saldo,0)
+          let s = ws.getCell(linea.fila, layout.saldoCol).value;
+          if (s && typeof s === "object") s = s.result;
+          if (typeof s !== "number") return 0;
+          return col === layout.deudorCol ? Math.max(s, 0) : Math.max(-s, 0);
+        }
+        return 0;
+      };
+      const aporte = g(layout.deudorCol) - g(layout.acreedorCol);
+      console.log(`   la línea aporta ${aporte.toFixed(2)} → el balance queda en ` +
+                  `${(m.datos.residuo + aporte).toFixed(2)}`);
+      if (Math.abs(m.datos.residuo + aporte) > 0.02) {
+        fallo(`la línea no deja el balance en cero: queda ${(m.datos.residuo + aporte).toFixed(2)}`);
+      }
     }
   }
 
-  // 2. El Acumulado R$ usa esa cifra para el cuadro de meses, y su línea lleva el acumulado.
-  const a = await correr("base_ba_brl.xlsx", { cuentas: acumulado }, "saldo_brl",
-                         "balance_acumulado_brl", acumulado, m.datos.residuo);
-  {
-    const ws = a.wb.getWorksheet("SALDOS");
-    const layout = require("./config_tfbr.js").derivarLayoutSaldos(a.wb);
-    const cuadro = pf.ubicarCuadroDifCambio(ws);
-    const total = cuadro ? pf.pfTotalDelCuadro(ws, cuadro) : null;
-    const filaJulio = cuadro ? cuadro.filas.find(f => f.mes === 7) : null;
-    const vJulio = filaJulio ? ws.getCell(filaJulio.fila, cuadro.colValor).value : null;
-    const linea = pf.pfUbicarLineaDifCambio(ws, layout);
-    const vLinea = linea ? ws.getCell(linea.fila, layout.acreedorCol).value : null;
+  // 2. El Acumulado R$: su residuo es la del año, y la fila del mes sale de ahí.
+  const a = await correr("base_ba_brl.xlsx", "balance_acumulado_brl", acumulado, acumulado);
+  const ws = a.wb.getWorksheet("SALDOS");
+  const layout = cfg.derivarLayoutSaldos(a.wb);
+  const cuadro = pf.ubicarCuadroDifCambio(ws);
+  const total = cuadro ? pf.pfTotalDelCuadro(ws, cuadro) : null;
+  const filaJulio = cuadro ? cuadro.filas.find(f => f.mes === 7) : null;
+  let vJulio = filaJulio ? ws.getCell(filaJulio.fila, cuadro.colValor).value : null;
+  if (vJulio && typeof vJulio === "object") vJulio = vJulio.result;
 
-    console.log(`\n== Acumulado R$: cuadro JULIO ${vJulio} · total ${total === null ? "—" : total.toFixed(2)} ` +
-                `· línea ${vLinea}`);
-    console.log(`   su propio residuo: ${a.datos.residuo === null ? "—" : a.datos.residuo.toFixed(2)}`);
+  console.log(`\n== Acumulado R$: residuo ${a.datos.residuo.toFixed(2)} ` +
+              `(contaduría ${CONTADURIA_ANIO.toFixed(2)})`);
+  console.log(`   fila JULIO del cuadro ${typeof vJulio === "number" ? vJulio.toFixed(2) : vJulio} ` +
+              `(contaduría ${CONTADURIA_MES.toFixed(2)}) · total del cuadro ` +
+              `${total === null ? "—" : total.toFixed(2)}`);
 
-    // La cifra del mes que calculó el Mensual R$ tiene que llegar tal cual al cuadro.
-    if (typeof vJulio !== "number" || Math.abs(vJulio - DEL_MES) > 0.02) {
-      fallo(`la fila JULIO del cuadro quedó en ${vJulio} y tendría que decir ${DEL_MES.toFixed(2)}`);
-    }
-    // Y la línea del plan, el total del cuadro.
-    if (total === null || typeof vLinea !== "number" || Math.abs(vLinea - total) > 0.02) {
-      fallo(`la línea quedó en ${vLinea} y el cuadro suma ${total}: tendrían que ser lo mismo`);
-    }
-    // El residuo de este archivo sale corto por FLETES, que el export no trae. Si algún día
-    // el export la trae, esto falla y hay que actualizar los números de arriba.
-    if (a.datos.residuo === null || Math.abs(a.datos.residuo - RESIDUO_ACUM) > 0.02) {
-      fallo(`el residuo del Acumulado R$ dio ${a.datos.residuo} y se esperaba ${RESIDUO_ACUM.toFixed(2)}`);
-    }
-    const hueco = total - a.datos.residuo;
-    console.log(`   cuadro − cuentas = ${hueco.toFixed(2)} (FLETES, que el export no trae: ${FLETES.toFixed(2)})`);
-    // Y el aviso tiene que estar: es lo que hace visible el hueco.
-    if (!a.datos.pendiente.some(t => /cuadro de dif de cambio suma/.test(t))) {
-      fallo("no avisó que el cuadro y las cuentas no dan lo mismo");
-    }
+  if (Math.abs(a.datos.residuo - CONTADURIA_ANIO) > CENTAVOS) {
+    fallo(`el residuo del Acumulado R$ tendría que dar ${CONTADURIA_ANIO.toFixed(2)}`);
+  }
+  if (typeof vJulio !== "number" || Math.abs(vJulio - CONTADURIA_MES) > CENTAVOS) {
+    fallo(`la fila JULIO tendría que dar ${CONTADURIA_MES.toFixed(2)} y dio ${vJulio}`);
+  }
+  // Lo que hace que el balance cierre: el cuadro tiene que dar lo mismo que las cuentas.
+  if (total === null || Math.abs(total - a.datos.residuo) > 0.02) {
+    fallo(`el cuadro suma ${total} y las cuentas dan ${a.datos.residuo.toFixed(2)}: no cierran`);
+  }
+  // Y ese mismo número tiene que estar en la línea del plan.
+  const linea = pf.pfUbicarLineaDifCambio(ws, layout);
+  let vLinea = linea ? ws.getCell(linea.fila, layout.acreedorCol).value : null;
+  if (vLinea && typeof vLinea === "object") vLinea = vLinea.result;
+  if (typeof vLinea !== "number" || Math.abs(vLinea - total) > 0.02) {
+    fallo(`la línea quedó en ${vLinea} y el cuadro suma ${total}`);
   }
 
-  console.log(fallas ? `\n✗ ${fallas} falla(s).` : "\n✓ La diferencia de cambio sale de las cuentas.");
+  console.log(fallas ? `\n✗ ${fallas} falla(s).` : "\n✓ La diferencia de cambio sale de las cuentas y el cuadro cierra contra ellas.");
   process.exit(fallas ? 1 : 0);
 })();

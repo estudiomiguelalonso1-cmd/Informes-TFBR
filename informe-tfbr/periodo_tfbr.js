@@ -280,8 +280,8 @@ function pfTotalDelCuadro(ws, cuadro) {
   return hubo ? total : null;
 }
 
-function escribirDatosDelPeriodo(wb, { periodo, tcCierre, diaCierre, escritas,
-                                     difCambioDelMes = null }, log = () => {}) {
+function escribirDatosDelPeriodo(wb, { periodo, tcCierre, diaCierre,
+                                     escritas }, log = () => {}) {
   const ws = wb.getWorksheet("SALDOS");
   const layout0 = derivarLayoutSaldos(wb);
   const [anioStr, mesStr] = String(periodo).split("-");
@@ -311,27 +311,52 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, diaCierre, escritas,
     log(`  TC de cierre: ${tcCierre}.`);
   }
 
-  // La diferencia de cambio del mes. Ya no se tipea: sale de las cuentas.
+  // La diferencia de cambio, calculada de las cuentas. Ya no se tipea.
   //
-  // Es el residuo del plan del Mensual R$ —lo que sobra de sumar todas las cuentas ya
-  // convertidas— y al Acumulado R$ le llega de afuera (`difCambioDelMes`), porque el cuadro de
-  // meses esta en ese archivo pero la cifra del MES es la del Mensual: el residuo del Acumulado
-  // es la del anio. Ver pfResiduoDelPlan.
+  // El residuo del plan —lo que sobra de sumar todas las cuentas ya convertidas— es la
+  // diferencia de cambio del periodo que cubre ese archivo: la del MES en el Mensual R$ y la
+  // del ANIO en el Acumulado R$. Ver pfResiduoDelPlan.
+  //
+  // La linea del plan de cada archivo lleva su propio residuo. La fila del mes del cuadro, que
+  // solo existe en el Acumulado R$, NO: se calcula como el residuo del anio menos lo que ya
+  // suma el resto del cuadro. Asi el cuadro cierra siempre contra las cuentas del archivo donde
+  // vive, que es lo que verifica la propia planilla (la celda rotulada "DIF").
+  //
+  // Por que no se toma del Mensual R$, que es lo natural: el export mensual de Onvio no trae los
+  // movimientos de las cuentas de patrimonio. En agosto de 2026 el acumulado dice que
+  // "3310000000 RNA EJERCICIO ANTERIOR" se movio -21.174,07 y "3320000000 RESULTADOS DEL
+  // EJERCICIO" 18.313,32, y el mensual no los reporta. Con esas cuentas afuera, el residuo del
+  // Mensual R$ da -3.371,23 y el del Acumulado pide -15.785,20: el cuadro quedaba corto en
+  // 12.413,97 y el balance en reales no cerraba.
+  //
+  // Probado contra el cierre de julio 2026, que hizo contaduria a mano y no paso por el
+  // sistema: la regla da 3.232,11 donde contaduria tipeo 3.231,78. Los 33 centavos son el
+  // redondeo por cuenta —el sistema redondea a centavos y contaduria no— y son los mismos que
+  // aparecen en el residuo (107.528,59 contra 107.528,26).
   const lineaDif = pfUbicarLineaDifCambio(ws, layout0);
   const residuo = escritas
     ? pfResiduoDelPlan(ws, layout0, escritas, lineaDif ? lineaDif.fila : null)
     : null;
-  const delMes = (difCambioDelMes === null || difCambioDelMes === undefined)
-    ? residuo : difCambioDelMes;
-  if (delMes !== null) {
-    log(`  Diferencia de cambio del mes, calculada de las cuentas: ${delMes.toFixed(2)}.`);
+  if (residuo !== null) {
+    log(`  Diferencia de cambio del período, calculada de las cuentas: ${residuo.toFixed(2)}.`);
   }
 
 
+  let difDelMes = null;      // la cifra del mes que quedó en el cuadro, para el historial
   let cuadro = ubicarCuadroDifCambio(ws);
   if (cuadro) {
     const fila = cuadro.filas.find(f => f.mes === mes);
-    const valor = delMes;
+    // Lo que ya suman las otras filas del cuadro; la del mes propio no cuenta, que es lo que
+    // estamos por escribir.
+    let resto = 0;
+    for (const f of cuadro.filas) {
+      if (f.mes === mes) continue;
+      let v = ws.getCell(f.fila, cuadro.colValor).value;
+      if (v && typeof v === "object") v = v.result;
+      if (typeof v === "number") resto += v;
+    }
+    const valor = residuo === null ? null : residuo - resto;
+    difDelMes = valor;
     if (fila && valor !== null) {
       ws.getCell(fila.fila, cuadro.colValor).value = valor;
       hecho.push(`Diferencia de cambio de ${fila.etiqueta}: ${valor}`);
@@ -369,13 +394,14 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, diaCierre, escritas,
 
   // Y la línea del plan que hace cerrar el balance.
   //
-  // Donde hay cuadro de meses, la línea lleva el ACUMULADO del año (la suma del cuadro), no el
-  // importe del mes: es lo que estaba escrito a mano y lo que el control de la propia planilla
-  // verifica. Donde no hay cuadro —el Mensual R$— lleva el importe del mes, que es lo que ese
-  // informe muestra.
+  // Donde hay cuadro de meses, la linea lleva el total del cuadro; donde no lo hay, el residuo
+  // del propio archivo. Las dos cosas son lo mismo ahora que la fila del mes sale del residuo:
+  // el cuadro cierra contra las cuentas por construccion. Se deja el total del cuadro porque es
+  // lo que verifica la celda rotulada "DIF" de la propia planilla, y el aviso de mas abajo
+  // avisa si alguna vez dejaran de coincidir.
   const linea = lineaDif;
   if (linea) {
-    const valorMes = delMes;
+    const valorMes = residuo;
     if (cuadro) {
       const total = pfTotalDelCuadro(ws, cuadro);
       if (total !== null) {
@@ -407,7 +433,7 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, diaCierre, escritas,
     }
   }
 
-  return { hecho, pendiente, tieneTc: !!tc, tieneCuadro: !!cuadro, tieneLinea: !!linea, residuo };
+  return { hecho, pendiente, tieneTc: !!tc, tieneCuadro: !!cuadro, tieneLinea: !!linea, residuo, difDelMes };
 }
 
 if (typeof module !== "undefined") {

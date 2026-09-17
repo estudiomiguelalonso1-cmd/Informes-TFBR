@@ -412,10 +412,6 @@ async function procesarPeriodo() {
         : "Falta el tipo de cambio de cierre: sin él no se puede calcular el saldo en reales " +
           "de las cuentas de activo, pasivo y patrimonio.");
     }
-    // La diferencia de cambio del mes la calcula el Mensual R$ —es el residuo de su plan— y la
-    // usa después el Acumulado R$, que es el que tiene el cuadro de meses. Por eso viaja acá
-    // afuera del bucle y no dentro del motor: son dos archivos distintos.
-    let difCambioDelMes = null;
 
     for (const a of ARCHIVOS_TFBR) {
       log(`\n=== ${a.label} ===`);
@@ -462,16 +458,13 @@ async function procesarPeriodo() {
         diaCierre: fechaDeCierre().dia,
         tcCierre: document.getElementById("tcCierreInput").value.trim(),
         escritas,
-        difCambioDelMes,
       }, log);
 
-      // El residuo del Mensual R$ ES la diferencia de cambio del mes (ver pfResiduoDelPlan).
-      if (a.id === "balance_mensual_brl" && periodoDatos.residuo !== null &&
-          periodoDatos.residuo !== undefined) {
-        difCambioDelMes = periodoDatos.residuo;
-        App.difCambioDelMes = difCambioDelMes;
-      }
 
+      // La cifra del mes vive en el cuadro del Acumulado R$; se guarda para el historial.
+      if (periodoDatos.difDelMes !== null && periodoDatos.difDelMes !== undefined) {
+        App.difCambioDelMes = periodoDatos.difDelMes;
+      }
       aplicarFixesAprobados(wb, a.id, log);
 
       const pendientes = pendientesManuales(wb, a.label);
