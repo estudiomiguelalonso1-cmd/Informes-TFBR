@@ -117,11 +117,13 @@ function mostrar(id, visible) {
   if (el) el.classList.toggle("hidden", !visible);
 }
 
+// El detalle de la corrida va a la consola del navegador (F12), no a la pantalla.
+//
+// Estaba abajo de todo en una tarjeta "Registro": cientos de lineas de formulas y numeros de
+// fila que solo sirven para diagnosticar. El que cierra el mes no las lee, y tenerlas ahi hace
+// que el aviso que SI importa —plata que no llega a ningun estado— quede perdido entre ellas.
 function log(msg) {
   App.logLineas.push(msg);
-  const el = document.getElementById("logTexto");
-  if (el) el.textContent = App.logLineas.join("\n");
-  mostrar("cardLog", true);
   console.log(msg);
 }
 
@@ -519,13 +521,6 @@ function pintarAlineacion() {
   if (!a) { cont.innerHTML = ""; return; }
 
   let html = "";
-  if (a.enganchadas.length) {
-    const porHoja = {};
-    a.enganchadas.forEach(x => { porHoja[x.hoja] = (porHoja[x.hoja] || 0) + 1; });
-    html += `<p class="footer-note">✓ ${a.enganchadas.length} cuenta(s) se engancharon para que ` +
-      `los cuatro archivos lean lo mismo (` +
-      Object.entries(porHoja).map(([h, n]) => `${h}: ${n}`).join(", ") + `).</p>`;
-  }
   // Una cuenta que cada archivo pone en un renglón distinto no se resuelve sola: elegir uno
   // sería mover plata de un renglón del balance a otro sin que nadie lo apruebe.
   if (a.discrepan.length) {
@@ -703,15 +698,8 @@ function pintarResultado() {
       extra += `<br><span class="footer-note">Sin mapear (no entran en ningún total): ` +
         s.sinMapear.map(c => `${c.codigo} ${c.nombre}`).join(", ") + `</span>`;
     }
-    for (const alta of (s.altas || [])) {
-      extra += `<br><span class="footer-note">➕ Alta: <b>${alta.clave}</b> (fila ${alta.fila})` +
-        (alta.gemela
-          ? ` — ya estaba con el código mal (<code>${alta.gemela}</code>); se movieron ` +
-            `${alta.repuntadas.length} referencia(s) a la fila nueva: ${alta.repuntadas.join(", ")}`
-          : "") + `</span>`;
-    }
-    // Plata de este mes que no llega a ninguna hoja. Se muestra arriba de todo lo demás y
-    // con el importe: es lo único del resumen que significa que falta plata en el informe.
+    // Plata de este mes que no llega a ninguna hoja: es el aviso que hay que leer, y el
+    // único del resumen que significa que falta plata en el informe.
     if ((s.sinDestino || []).length) {
       const suma = s.sinDestino.reduce((t, c) => t + c.importe, 0);
       extra += `<div class="aviso-plata"><b>${s.sinDestino.length} cuenta(s) con ` +
@@ -720,10 +708,6 @@ function pintarResultado() {
         s.sinDestino.map(c =>
           `<li><span class="mono">${c.cod}</span> ${c.nom} — <b>${c.importe.toFixed(2)}</b></li>`
         ).join("") + `</ul></div>`;
-    }
-    for (const r of (s.rangosExpandidos || [])) {
-      extra += `<br><span class="footer-note">✓ ${r.donde}: el rango ${r.rango} pasó a nombrar ` +
-        `sus ${r.cuentas} cuentas una por una.</span>`;
     }
     for (const r of (s.rangosSalteados || [])) {
       extra += `<br><span class="footer-note">⚠ ${r.donde}: no expandí el rango — ${r.motivo}.</span>`;
@@ -742,16 +726,16 @@ function pintarResultado() {
       extra += `<br><span class="footer-note">⚠ <b>${d.codigo}</b> (filas ` +
         `${d.filas.map(f => f.fila).join(" y ")}) — ${etiqueta}: ${d.motivo}</span>`;
     }
-    for (const h of (r.periodoDatos ? r.periodoDatos.hecho : [])) {
-      extra += `<br><span class="footer-note">✓ ${h}</span>`;
-    }
+    // Solo lo que quedó pendiente. Lo que salió bien no se lista: "TC escrito", "4 fechas
+    // actualizadas", "línea DIFERENCIA DE CAMBIO" son el trabajo normal de todos los cierres, y
+    // repetirlos en los cuatro archivos tapa el renglón que hay que leer.
     for (const p of (r.periodoDatos ? r.periodoDatos.pendiente : [])) {
       extra += `<br><span class="footer-note">⚠ ${p}</span>`;
     }
     div.innerHTML = `
       <b>${a.label}</b> <span class="badge ${badgeClase}">${badgeTxto}</span><br>
       <span class="footer-note">
-        ${s.cuentasEscritas} de ${s.cuentasExport} cuentas escritas · total $ ${s.totalEscrito.toFixed(2)}
+        ${s.cuentasEscritas} de ${s.cuentasExport} cuentas escritas
       </span>${extra}`;
     cont.appendChild(div);
   }
