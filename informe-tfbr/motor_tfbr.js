@@ -188,7 +188,7 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
 
   // Los cuatro archivos con los mismos rótulos, tomando el Mensual $ como modelo, y cada
   // cuenta leída por un solo renglón.
-  const unificacion = unificarRotulosAnexo(wb, planDeCuentas, log);
+  const unificacion = unificarRotulosAnexo(wb, layout, planDeCuentas, log);
 
   // Cuentas de gasto que ningún renglón del Anexo II lee. Primero se enganchan solas las que
   // ya tienen decisión tomada en un mes anterior; las que quedan se devuelven para que la
@@ -214,6 +214,11 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // cuentas que entran este mes todavía las levanta el rango como siempre, y recién después
   // quedan fijadas. Al revés, una cuenta nueva que hoy el rango levanta se perdería sin avisar.
   const rastreo = expandirRangosSaldos(wb, layout, log);
+
+  // Y los renglones que nombran una sola de las dos columnas de una cuenta. Va despues de
+  // expandir los rangos, porque expandir convierte un SUM(D53:D79) en cuentas sueltas y esas
+  // tambien hay que completarlas. Ver media_columna.js.
+  const mediaColumna = completarMediaColumna(wb, layout, log);
 
   // Anexo I: el valor de origen de los bienes de uso sale de las cuentas, no de un número
   // tipeado. Va después de escribir el staging porque necesita saber qué se pegó: con las
@@ -313,6 +318,7 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
         fusionadas: limpieza.fusionadas, trabadas: limpieza.trabadas,
         sinExplicar: limpieza.sinExplicar, ambiguos: limpieza.ambiguos,
       },
+      mediaColumna,
       repuntesAnexo: repuntes.hechos,
       rotulosAgregados: rotulos.agregados,
       rotulosUnificados: unificacion,
@@ -362,6 +368,7 @@ if (typeof module !== "undefined") {
   global.expandirRangosSaldos = rr.expandirRangosSaldos;
   global.completarAnexoI = require("./anexo_i.js").completarAnexoI;
   global.aplicarRenombresRenglon = require("./config_hojas.js").aplicarRenombresRenglon;
+  global.completarMediaColumna = require("./media_columna.js").completarMediaColumna;
   global.aplicarAsignaciones = require("./config_hojas.js").aplicarAsignaciones;
   const cg = require("./config_guardada.js");
   global.aplicarConfiguracion = cg.aplicarConfiguracion;

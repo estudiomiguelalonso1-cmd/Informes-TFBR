@@ -304,7 +304,7 @@ function renombrarRotulos(ax, log = () => {}) {
 }
 
 // Deja cada cuenta leída por UN solo renglón: el de su rótulo. Crea el rótulo si falta.
-function asignarCuentasARotulos(wb, planDeCuentas, log = () => {}) {
+function asignarCuentasARotulos(wb, layout, planDeCuentas, log = () => {}) {
   const ax = wb.getWorksheet("Anexo II");
   const enganchadas = [], creados = [], quitadas = [], salteadas = [];
   if (!ax) return { enganchadas, creados, quitadas, salteadas };
@@ -350,17 +350,31 @@ function asignarCuentasARotulos(wb, planDeCuentas, log = () => {}) {
       log(`  Anexo II: renglón "${m.rotulo}" creado en la fila ${filaRotulo}`);
     }
 
-    const colImp = bloque.colImporte || "C";
+    // La celda destino tiene que leer el NETO de la cuenta, no una columna sola.
+    //
+    // Antes se daba por buena cualquier referencia a esa fila y, si faltaba, se agregaba un
+    // solo término. Los dos caminos perdían plata cuando la cuenta cambiaba de signo: en el
+    // Anexo II del Mensual $ de agosto 2026, "4230400000 INTERESES RESARCITORIOS" estaba en
+    // F75 leyendo la deudora y en D75 leyendo la acreedora. El paso de arriba la sacó de F75
+    // —que es donde estaba el importe— y dio por buena la D75, que solo lee la acreedora y en
+    // un gasto con saldo deudor vale cero. Los 14.524,10 de esa cuenta desaparecieron del
+    // estado de resultados y el balance no cerró.
+    //
+    // Se saca cualquier referencia vieja a esa fila y se escribe el neto, que es lo mismo que
+    // hace el resto del motor (ver ctFormulaNetaAnexo).
     const celda = ax.getCell(filaRotulo, RU_CC[m.cc] || 5);
+    const neto = ctFormulaNetaAnexo(layout, cuenta.fila);
     const v = celda.value;
-    const ya = v && typeof v === "object" && typeof v.formula === "string" &&
-      new RegExp("SALDOS!\\$?[A-Z]{1,3}\\$?" + cuenta.fila + "(?!\\d)").test(v.formula);
-    if (!ya) {
-      const previo = (v && typeof v === "object" && typeof v.formula === "string") ? v.formula : "";
-      celda.value = { formula: previo ? `${previo}+SALDOS!${colImp}${cuenta.fila}`
-                                      : `+SALDOS!${colImp}${cuenta.fila}` };
-      enganchadas.push({ cod: m.cod, rotulo: m.rotulo, fila: filaRotulo });
-    }
+    const previo = (v && typeof v === "object" && typeof v.formula === "string") ? v.formula : "";
+    if (previo.includes(neto)) continue;
+
+    // rtQuitarTermino ya sabe sacar una referencia a esa fila, sea de la columna que sea; si la
+    // celda queda sin nada la deja en cero, y entonces el neto va solo.
+    rtQuitarTermino(ax, `${String.fromCharCode(64 + (RU_CC[m.cc] || 5))}${filaRotulo}`, cuenta.fila);
+    const q = celda.value;
+    const limpio = (q && typeof q === "object" && typeof q.formula === "string") ? q.formula : "";
+    celda.value = { formula: limpio ? `${limpio}${neto}` : neto };
+    enganchadas.push({ cod: m.cod, rotulo: m.rotulo, fila: filaRotulo });
   }
   return { enganchadas, creados, quitadas, salteadas };
 }
@@ -390,11 +404,11 @@ function completarRotulos(wb, log = () => {}) {
   return agregados;
 }
 
-function unificarRotulosAnexo(wb, planDeCuentas, log = () => {}) {
+function unificarRotulosAnexo(wb, layout, planDeCuentas, log = () => {}) {
   const ax = wb.getWorksheet("Anexo II");
   if (!ax) return { renombrados: [], enganchadas: [], creados: [], quitadas: [], salteadas: [], completados: [] };
   const renombrados = renombrarRotulos(ax, log);
-  const asignadas = asignarCuentasARotulos(wb, planDeCuentas, log);
+  const asignadas = asignarCuentasARotulos(wb, layout, planDeCuentas, log);
   const completados = completarRotulos(wb, log);
   return { renombrados, ...asignadas, completados };
 }
@@ -405,6 +419,7 @@ if (typeof module !== "undefined") {
   global.insertRowEn = fh.insertRowEn;
   global.rtUbicarBloque = ra.rtUbicarBloque;
   global.rtQuitarTermino = ra.rtQuitarTermino;
+  global.ctFormulaNetaAnexo = require("./config_tfbr.js").ctFormulaNetaAnexo;
   module.exports = { RENOMBRAR_ROTULOS, CUENTA_DE_ROTULO, ROTULOS_COMUNES,
     unificarRotulosAnexo, renombrarRotulos, asignarCuentasARotulos, completarRotulos };
 }

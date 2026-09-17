@@ -72,7 +72,7 @@ async function prepararMaestro(archivo) {
   const layout = cfg.derivarLayoutSaldos(wb);
   const plan = cfg.leerPlanDeCuentas(wb, layout).cuentas;
   aplicarRepuntesAnexo(wb, null, plan, () => {});
-  unificarRotulosAnexo(wb, plan, () => {});
+  unificarRotulosAnexo(wb, layout, plan, () => {});
   return { wb, layout };
 }
 

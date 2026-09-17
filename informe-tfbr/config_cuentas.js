@@ -84,7 +84,7 @@ function cfgPrepararCopia(wb, archivoId) {
   let layout = derivarLayoutSaldos(wb);
   const plan = leerPlanDeCuentas(wb, layout).cuentas;
   aplicarRepuntesAnexo(wb, null, plan, () => {});
-  unificarRotulosAnexo(wb, plan, () => {});
+  unificarRotulosAnexo(wb, layout, plan, () => {});
   // Sin esto, "- Proveedores" del Pasivo se vería leyendo 5 cuentas en vez de 31: el rango
   // todavía sin expandir sólo nombra sus extremos.
   expandirRangosSaldos(wb, layout, () => {});
