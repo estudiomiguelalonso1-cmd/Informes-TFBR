@@ -264,7 +264,7 @@ function pfTotalDelCuadro(ws, cuadro) {
   return hubo ? total : null;
 }
 
-function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierre, escritas,
+function escribirDatosDelPeriodo(wb, { periodo, tcCierre, diaCierre, escritas,
                                      difCambioDelMes = null }, log = () => {}) {
   const ws = wb.getWorksheet("SALDOS");
   const layout0 = derivarLayoutSaldos(wb);
@@ -295,34 +295,22 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierr
     log(`  TC de cierre: ${tcCierre}.`);
   }
 
-  // La diferencia de cambio del mes: calculada, salvo que la hayan tipeado.
+  // La diferencia de cambio del mes. Ya no se tipea: sale de las cuentas.
   //
-  // La calculada es el residuo del plan del Mensual R$ —lo que sobra de sumar todas las cuentas
-  // ya convertidas— y viene de afuera (`difCambioDelMes`) porque el cuadro de meses esta en el
-  // Acumulado R$ pero la cifra del mes es la del Mensual. Ver pfResiduoDelPlan.
-  //
-  // Si igual la tipearon, gana lo tipeado y se avisa cuando no coinciden: forzar un numero es
-  // una decision valida, pasar de largo una diferencia entre los dos no.
+  // Es el residuo del plan del Mensual R$ —lo que sobra de sumar todas las cuentas ya
+  // convertidas— y al Acumulado R$ le llega de afuera (`difCambioDelMes`), porque el cuadro de
+  // meses esta en ese archivo pero la cifra del MES es la del Mensual: el residuo del Acumulado
+  // es la del anio. Ver pfResiduoDelPlan.
   const lineaDif = pfUbicarLineaDifCambio(ws, layout0);
   const residuo = escritas
     ? pfResiduoDelPlan(ws, layout0, escritas, lineaDif ? lineaDif.fila : null)
     : null;
-  const tipeada = ptNumeroTipeado(difCambioMes);
-  // Si nadie la pasa de afuera, la del propio archivo. Eso es lo que pasa en el Mensual R$,
-  // que es justamente el que la calcula; el Acumulado R$ la recibe del Mensual porque su
-  // cuadro necesita la cifra del MES y el residuo de ese archivo es la del año.
-  const calculada = (difCambioDelMes === null || difCambioDelMes === undefined)
+  const delMes = (difCambioDelMes === null || difCambioDelMes === undefined)
     ? residuo : difCambioDelMes;
-  const delMes = tipeada !== null ? tipeada : calculada;
-  if (tipeada !== null && calculada !== null && Math.abs(tipeada - calculada) > 0.01) {
-    pendiente.push(
-      `La diferencia de cambio que cargaste (${tipeada.toFixed(2)}) no coincide con la que sale ` +
-      `de las cuentas (${calculada.toFixed(2)}). Usé la tuya. Si no la querías forzar, dejá el ` +
-      `campo vacío y la calcula sola.`
-    );
-  } else if (tipeada === null && calculada !== null) {
-    log(`  Diferencia de cambio del mes, calculada de las cuentas: ${calculada.toFixed(2)}.`);
+  if (delMes !== null) {
+    log(`  Diferencia de cambio del mes, calculada de las cuentas: ${delMes.toFixed(2)}.`);
   }
+
 
   const cuadro = ubicarCuadroDifCambio(ws);
   if (cuadro) {
@@ -351,9 +339,10 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierr
       log(`  ⚠ Sin fila para ${MESES_ES[mes - 1]} en el cuadro de dif de cambio: queda pendiente a mano.`);
     } else if (valor === null) {
       pendiente.push(
-        `Falta la cifra de diferencia de cambio de ${MESES_ES[mes - 1]} (fila "${fila.etiqueta}").`
+        `No pude calcular la diferencia de cambio de ${MESES_ES[mes - 1]} (fila ` +
+        `"${fila.etiqueta}"): sale de las cuentas del Mensual R$ y este cierre no las tiene.`
       );
-      log(`  ⚠ No se cargó la diferencia de cambio de ${MESES_ES[mes - 1]}: queda pendiente a mano.`);
+      log(`  ⚠ No pude calcular la diferencia de cambio de ${MESES_ES[mes - 1]}: queda pendiente a mano.`);
     }
   }
 
@@ -390,8 +379,9 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierr
       hecho.push(`Línea "DIFERENCIA DE CAMBIO": ${valorMes}`);
     } else {
       pendiente.push(
-        `Falta la diferencia de cambio del mes. Sin ella la línea "DIFERENCIA DE CAMBIO" ` +
-        `(SALDOS fila ${linea.fila}) queda con la del mes pasado y el balance en reales no cierra.`
+        `No pude calcular la diferencia de cambio del mes. Sin ella la línea ` +
+        `"DIFERENCIA DE CAMBIO" (SALDOS fila ${linea.fila}) queda con la del mes pasado y el ` +
+        `balance en reales no cierra.`
       );
     }
   }

@@ -64,7 +64,7 @@ async function correr(archivo, periodo, campo, id, cuentasAcumulado, difCambioDe
   });
   const datos = pf.escribirDatosDelPeriodo(wb, {
     periodo: PERIODO, diaCierre: 31, tcCierre: String(TC),
-    difCambioMes: "", escritas, difCambioDelMes,
+    escritas, difCambioDelMes,
   }, () => {});
   return { wb, datos };
 }

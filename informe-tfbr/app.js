@@ -459,7 +459,6 @@ async function procesarPeriodo() {
         periodo: fechaDeCierre().periodo,
         diaCierre: fechaDeCierre().dia,
         tcCierre: document.getElementById("tcCierreInput").value.trim(),
-        difCambioMes: document.getElementById("difCambioInput").value.trim(),
         escritas,
         difCambioDelMes,
       }, log);
@@ -468,6 +467,7 @@ async function procesarPeriodo() {
       if (a.id === "balance_mensual_brl" && periodoDatos.residuo !== null &&
           periodoDatos.residuo !== undefined) {
         difCambioDelMes = periodoDatos.residuo;
+        App.difCambioDelMes = difCambioDelMes;
       }
 
       aplicarFixesAprobados(wb, a.id, log);
@@ -966,7 +966,8 @@ async function confirmarInformes() {
       periodo,
       fecha: new Date().toISOString(),
       tcCierre: document.getElementById("tcCierreInput").value.trim(),
-      difCambioMes: document.getElementById("difCambioInput").value.trim(),
+      difCambioMes: App.difCambioDelMes === null || App.difCambioDelMes === undefined
+        ? "" : App.difCambioDelMes.toFixed(2),
       archivos,
       resumen: Object.fromEntries(
         ARCHIVOS_TFBR.map(a => [a.id, App.resultados[a.id] ? App.resultados[a.id].resumen : null])

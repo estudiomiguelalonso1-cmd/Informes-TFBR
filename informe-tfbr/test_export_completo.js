@@ -42,7 +42,7 @@ async function residuoDe(cuentas, maestro = "base_ba_brl.xlsx", id = "balance_ac
     archivoId: id, cuentasAcumulado: cuentas, log: () => {},
   });
   const datos = pf.escribirDatosDelPeriodo(wb, {
-    periodo: "2026-08", diaCierre: 31, tcCierre: String(TC), difCambioMes: "", escritas,
+    periodo: "2026-08", diaCierre: 31, tcCierre: String(TC), escritas,
   }, () => {});
   return { residuo: datos.residuo, escritas };
 }
