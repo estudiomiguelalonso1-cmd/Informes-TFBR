@@ -34,12 +34,12 @@ function leer(archivo) {
   return P.parseSumasYSaldosTFBR(XLSX.utils.sheet_to_json(ws, { header: 1 }), ws["!merges"]);
 }
 
-async function residuoDe(cuentas) {
+async function residuoDe(cuentas, maestro = "base_ba_brl.xlsx", id = "balance_acumulado_brl") {
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(path.join(__dirname, "base_ba_brl.xlsx"));
+  await wb.xlsx.readFile(path.join(__dirname, maestro));
   const { escritas } = motor.procesarMaestroTFBR({
     wb, cuentasExport: cuentas, campoSaldo: "saldo_brl",
-    archivoId: "balance_acumulado_brl", cuentasAcumulado: cuentas, log: () => {},
+    archivoId: id, cuentasAcumulado: cuentas, log: () => {},
   });
   const datos = pf.escribirDatosDelPeriodo(wb, {
     periodo: "2026-08", diaCierre: 31, tcCierre: String(TC), difCambioMes: "", escritas,
@@ -100,6 +100,31 @@ async function residuoDe(cuentas) {
   if (pegadas > corto.cuentas.length + 10) {
     fallo(`se pegaron ${pegadas} cuentas: las que están en cero no tendrían que pegarse`);
   }
+
+  // 6. Lo mismo para el mensual. En agosto de 2026 las 13 cuentas que agrega el completo son
+  //    todas patrimoniales con los pesos en cero, y el R$ de esas sale de los pesos dividido el
+  //    TC, asi que dan cero y el numero no se mueve. Igual hay que pedirlo completo: el mes que
+  //    aparezca una cuenta de resultado como FLETES, el corto se la come sin avisar.
+  const mCorto = leer("sumas_y_saldos_mensual.xls");
+  const mLargo = leer("sumas_y_saldos_mensual_completo.xls");
+  console.log(`
+== mensual — corto: ${mCorto.cuentas.length} cuentas · completo: ${mLargo.cuentas.length}`);
+
+  if (!mCorto.pareceReporteCorto) fallo("no reconocí el mensual corto");
+  if (mLargo.pareceReporteCorto) fallo("tomé el mensual completo por corto");
+
+  const ma = await residuoDe(P.convertirSaldosEnReales(mCorto.cuentas, TC), "base_bm_brl.xlsx", "balance_mensual_brl");
+  const mb = await residuoDe(P.convertirSaldosEnReales(mLargo.cuentas, TC), "base_bm_brl.xlsx", "balance_mensual_brl");
+  console.log(`   diferencia de cambio del mes: corto ${ma.residuo.toFixed(2)} · completo ${mb.residuo.toFixed(2)}` +
+              ` · pegadas ${Object.keys(mb.escritas).length}`);
+  if (Math.abs(ma.residuo - mb.residuo) > 0.02) {
+    fallo(`en agosto los dos exports tendrían que dar lo mismo y dan ${ma.residuo.toFixed(2)} y ` +
+          `${mb.residuo.toFixed(2)}: apareció una cuenta que el corto se come`);
+  }
+  if (Object.keys(mb.escritas).length > mCorto.cuentas.length + 10) {
+    fallo(`se pegaron ${Object.keys(mb.escritas).length} cuentas en el mensual`);
+  }
+
 
   console.log(fallas ? `\n✗ ${fallas} falla(s).` : "\n✓ El export completo suma lo que falta y no arrastra lo que sobra.");
   process.exit(fallas ? 1 : 0);
