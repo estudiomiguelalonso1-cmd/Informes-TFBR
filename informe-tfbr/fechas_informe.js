@@ -43,6 +43,21 @@ function fiTexto(ws, r, c) {
   return v;
 }
 
+// Las celdas que guardan una FECHA de verdad, no un texto.
+//
+// Cada informe tiene una: "EESP!F9" en los mensuales, "EESP!F13" en los acumulados, con la
+// fecha de cierre. No es una mas: la leen por formula el EERR, el EEPN, el Activo, el Pasivo,
+// el Anexo I y el Anexo II, asi que una sola celda sin actualizar sale mal en seis recuadros.
+// Es justo lo que pasaba — los titulos decian "31 de Agosto de 2026" y los cuadros 31/07/2026.
+//
+// Se tocan con el mismo criterio que los textos: solo si son del mes y anio que el archivo trae
+// como cierre. El 31/12/2005 que hay en el EESP y en el Activo no es del periodo y no se mueve.
+function fiFechaReal(ws, r, c) {
+  const v = ws.getCell(r, c).value;
+  return v instanceof Date ? v : null;
+}
+
+
 function fiUltimoDia(anio, mes) { return new Date(anio, mes, 0).getDate(); }
 
 // Todas las fechas que aparecen en un texto, con dónde empiezan y de qué forma están escritas.
@@ -87,16 +102,18 @@ function fiEscribir(f, dia, mes, anio) {
 // el último día (cierre) — "del 01/07/2026 al 31/07/2026" es un solo cierre, no dos fechas.
 function fiPeriodoActualDe(wb) {
   const votos = {};
+  const sumar = (anio, mes) => {
+    const k = `${anio}-${mes}`;
+    votos[k] = (votos[k] || 0) + 1;
+  };
   for (const ws of wb.worksheets) {
     ws.eachRow({ includeEmpty: false }, (row, r) => {
       if (r > 60) return;
       row.eachCell({ includeEmpty: false }, (cell, c) => {
         const t = fiTexto(ws, r, c);
-        if (!t) return;
-        for (const f of fiFechasEn(t)) {
-          const k = `${f.anio}-${f.mes}`;
-          votos[k] = (votos[k] || 0) + 1;
-        }
+        if (t) for (const f of fiFechasEn(t)) sumar(f.anio, f.mes);
+        const d = fiFechaReal(ws, r, c);
+        if (d) sumar(d.getUTCFullYear(), d.getUTCMonth() + 1);
       });
     });
   }
@@ -138,6 +155,19 @@ function actualizarFechasDelInforme(wb, periodo, log = () => {}, diaCierre = nul
     ws.eachRow({ includeEmpty: false }, (row, r) => {
       if (r > 60) return;
       row.eachCell({ includeEmpty: false }, (cell, c) => {
+        // Una fecha de verdad se reescribe como fecha, conservando el formato de la celda:
+        // es un solo valor, no un texto con la fecha adentro.
+        const real = fiFechaReal(ws, r, c);
+        if (real) {
+          if (real.getUTCFullYear() !== actual.anio || real.getUTCMonth() + 1 !== actual.mes) return;
+          const dia = real.getUTCDate() === ultimoViejo ? ultimoNuevo : real.getUTCDate();
+          const antes = real.toISOString().slice(0, 10);
+          cell.value = new Date(Date.UTC(anio, mes - 1, dia));
+          cambiadas.push({ hoja: ws.name, celda: cell.address, de: antes,
+                           a: cell.value.toISOString().slice(0, 10) });
+          return;
+        }
+
         const t = fiTexto(ws, r, c);
         if (!t) return;
         const fechas = fiFechasEn(t).filter(f => f.anio === actual.anio && f.mes === actual.mes);

@@ -240,11 +240,27 @@ function pfResiduoDelPlan(ws, layout, escritas, filaExcluida) {
   return total;
 }
 
+// La linea se escribe como cualquier renglon del plan: el saldo, y de ahi deudora y acreedora.
+//
+// El importe puede ser negativo. Antes se escribia siempre en la acreedora, que es como estaba
+// en julio 2026 —3.231,78, positivo— y con eso alcanzaba. En agosto dio -3.371,23 y quedo
+// "acreedora -3.371,23": la fila del Mensual R$ tiene la deudora puesta como formula
+// (IF(saldo>0,saldo,0)), asi que devolvio +3.371,23 y el importe se conto dos veces. El balance
+// en reales descuadraba en 6.742,46, justo el doble.
+//
+// Deudora y acreedora salen del saldo, que es la regla de toda la hoja: deudora lo que es
+// positivo, acreedora lo que es negativo. Una columna que ya es formula no se pisa: ya hace
+// exactamente eso y escribirle un numero encima seria romper lo que el archivo trae.
 function pfEscribirLineaDifCambio(ws, layout, linea, valor, log) {
-  // Acreedora el importe, y la columna del saldo el mismo número con el signo cambiado, que es
-  // como está escrita la línea en los dos archivos.
-  ws.getCell(linea.fila, layout.acreedorCol).value = valor;
-  ws.getCell(linea.fila, layout.saldoCol).value = -valor;
+  const saldo = -valor;
+  ws.getCell(linea.fila, layout.saldoCol).value = saldo;
+
+  const porColumna = [[layout.deudorCol, Math.max(saldo, 0)], [layout.acreedorCol, Math.max(-saldo, 0)]];
+  for (const [col, importe] of porColumna) {
+    const v = ws.getCell(linea.fila, col).value;
+    const esFormula = v && typeof v === "object" && (typeof v.formula === "string" || v.sharedFormula);
+    if (!esFormula) ws.getCell(linea.fila, col).value = importe;
+  }
   log(`  Línea "DIFERENCIA DE CAMBIO" (fila ${linea.fila}): ${valor}.`);
 }
 
@@ -312,7 +328,7 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, diaCierre, escritas,
   }
 
 
-  const cuadro = ubicarCuadroDifCambio(ws);
+  let cuadro = ubicarCuadroDifCambio(ws);
   if (cuadro) {
     const fila = cuadro.filas.find(f => f.mes === mes);
     const valor = delMes;
@@ -328,6 +344,11 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, diaCierre, escritas,
       const ins = pfInsertarFilaDelMes(wb, ws, cuadro, anio, mes, valor, log, diaCierre || null);
       if (ins.ok) {
         hecho.push(`Diferencia de cambio de ${ins.etiqueta}: ${valor} (fila ${ins.fila}, agregada al cuadro)`);
+        // Insertar corrio todas las filas de abajo. El cuadro que teniamos en memoria quedo
+        // con los numeros viejos, y pfTotalDelCuadro los usa para sumar: leia una fila de
+        // menos y se comia el renglon de acumulado del semestre. En agosto de 2026 la linea
+        // quedo en 11.174,14 cuando el cuadro sumaba 104.157,03.
+        cuadro = ubicarCuadroDifCambio(ws) || cuadro;
       } else {
         pendiente.push(pfAvisoFaltaFilaMes(cuadro, mes, valor, ins.motivo));
         log(`  ⚠ No agregué la fila de ${MESES_ES[mes - 1]} (${ins.motivo}): queda pendiente a mano.`);
