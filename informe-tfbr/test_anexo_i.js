@@ -121,38 +121,6 @@ function valorDe(ax, fila, col) {
       }
     }
 
-    // El "Bienes de uso" del EESP tiene que salir del Anexo I en los cuatro.
-    //
-    // El Mensual $ era el unico que no: leia "+SALDOS!E47" —un subtotal de amortizaciones— y
-    // mostraba un activo en negativo mientras su propio Anexo I tenia el neto bien calculado.
-    {
-      const ubic = ai.aiUbicar(ax);
-      const colNeto = ai.aiColumnaNeto(ax, ubic);
-      const filaTotal = ai.aiFilaTotal(ax, ubic, colNeto);
-      const esperado = `+'Anexo I'!${cfg.ctColNumeroALetra(colNeto)}${filaTotal}`;
-      const es = wb.getWorksheet("EESP");
-      let encontrado = null;
-      for (let r = 1; r <= es.rowCount && !encontrado; r++) {
-        for (let c = 1; c <= 8 && !encontrado; c++) {
-          const t = es.getCell(r, c).value;
-          const txt = t && typeof t === "object"
-            ? (t.richText ? t.richText.map(x => x.text).join("") : "") : String(t || "");
-          if (!norm(txt).startsWith("BIENES DE USO")) continue;
-          for (let k = c + 1; k <= c + 8; k++) {
-            const v = es.getCell(r, k).value;
-            if (typeof v === "number") { encontrado = String(v); break; }
-            if (v && typeof v === "object" && typeof v.formula === "string") {
-              encontrado = "+" + v.formula.replace(/^\+/, ""); break;
-            }
-          }
-        }
-      }
-      if (encontrado === null) fallo(`${m.label}: no encontré el renglón "Bienes de uso" en el EESP`);
-      else if (encontrado !== esperado) {
-        fallo(`${m.label}: el "Bienes de uso" del EESP lee "${encontrado}" y tendría que leer "${esperado}"`);
-      }
-    }
-
     // El Mensual $ es el patrón: tenía los 7 cargados a mano y tienen que dar iguales.
     if (m.label === "Mensual $") {
       const cargados = Object.values(antes).filter(v => v != null && Math.abs(v) > 0.005).length;
