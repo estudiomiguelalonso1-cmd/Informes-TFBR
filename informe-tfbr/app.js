@@ -487,6 +487,20 @@ async function procesarPeriodo() {
       ARCHIVOS_TFBR.map(a => ({ id: a.id, label: a.label, wb: App.resultados[a.id] && App.resultados[a.id].wb }))
         .filter(x => x.wb),
       log);
+
+    // El aviso de "plata que no llega a ningún estado" se rehace acá, no en el motor.
+    //
+    // El motor lo calculaba antes de que alinearHojas enganchara las cuentas que faltaban, así
+    // que denunciaba cuentas que sí llegan: en el cierre de agosto 2026 marcaba 95 millones de
+    // "RECUPERO DE SINIESTRO" como perdidos cuando el EERR ya los tomaba. Un aviso que grita
+    // cuando no pasa nada es peor que no tenerlo: se deja de mirar.
+    for (const a of ARCHIVOS_TFBR) {
+      const r = App.resultados[a.id];
+      if (!r || !r.wb) continue;
+      r.resumen.sinDestino = cuentasSinDestino(r.wb, r.resumen.layout || derivarLayoutSaldos(r.wb),
+        leerPlanDeCuentas(r.wb, r.resumen.layout || derivarLayoutSaldos(r.wb)).cuentas, r.escritas)
+        .map(c => ({ cod: c.cod, nom: c.nom, importe: c.importe }));
+    }
     // Los .xlsx se vuelven a generar: el enganche recién hecho tiene que estar en lo que se baja.
     for (const a of ARCHIVOS_TFBR) {
       const r = App.resultados[a.id];
@@ -650,6 +664,20 @@ async function aplicarCuentasNuevas() {
       ARCHIVOS_TFBR.map(a => ({ id: a.id, label: a.label, wb: App.resultados[a.id] && App.resultados[a.id].wb }))
         .filter(x => x.wb),
       log);
+
+    // El aviso de "plata que no llega a ningún estado" se rehace acá, no en el motor.
+    //
+    // El motor lo calculaba antes de que alinearHojas enganchara las cuentas que faltaban, así
+    // que denunciaba cuentas que sí llegan: en el cierre de agosto 2026 marcaba 95 millones de
+    // "RECUPERO DE SINIESTRO" como perdidos cuando el EERR ya los tomaba. Un aviso que grita
+    // cuando no pasa nada es peor que no tenerlo: se deja de mirar.
+    for (const a of ARCHIVOS_TFBR) {
+      const r = App.resultados[a.id];
+      if (!r || !r.wb) continue;
+      r.resumen.sinDestino = cuentasSinDestino(r.wb, r.resumen.layout || derivarLayoutSaldos(r.wb),
+        leerPlanDeCuentas(r.wb, r.resumen.layout || derivarLayoutSaldos(r.wb)).cuentas, r.escritas)
+        .map(c => ({ cod: c.cod, nom: c.nom, importe: c.importe }));
+    }
     // Los .xlsx se vuelven a generar: el enganche recién hecho tiene que estar en lo que se baja.
     for (const a of ARCHIVOS_TFBR) {
       const r = App.resultados[a.id];

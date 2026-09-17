@@ -262,6 +262,10 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
   // reciben un importe y se muestran, salen con otra letra y el número sin separador de miles.
   const formato = uniformarFormatoDeBloques(wb, layout, log);
 
+  // Y las celdas rotas que el maestro arrastra. Va al final: los pasos de arriba insertan filas
+  // y mueven celdas, y esto necesita saber quien lee a quien en el archivo ya terminado.
+  const errores = limpiarErrores(wb, log);
+
   // Las que la persona marcó como que no van a ningún renglón no se denuncian: quedaron así
   // a propósito, y avisar todos los meses enseña a ignorar el aviso.
   const excluidas = cuentasExcluidas(configuracion);
@@ -319,6 +323,7 @@ function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, 
         sinExplicar: limpieza.sinExplicar, ambiguos: limpieza.ambiguos,
       },
       mediaColumna,
+      errores,
       repuntesAnexo: repuntes.hechos,
       rotulosAgregados: rotulos.agregados,
       rotulosUnificados: unificacion,
@@ -369,6 +374,7 @@ if (typeof module !== "undefined") {
   global.completarAnexoI = require("./anexo_i.js").completarAnexoI;
   global.aplicarRenombresRenglon = require("./config_hojas.js").aplicarRenombresRenglon;
   global.completarMediaColumna = require("./media_columna.js").completarMediaColumna;
+  global.limpiarErrores = require("./limpiar_errores.js").limpiarErrores;
   global.aplicarAsignaciones = require("./config_hojas.js").aplicarAsignaciones;
   const cg = require("./config_guardada.js");
   global.aplicarConfiguracion = cg.aplicarConfiguracion;
