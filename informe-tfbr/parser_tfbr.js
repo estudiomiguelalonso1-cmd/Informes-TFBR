@@ -187,10 +187,25 @@ function parseSumasYSaldosTFBR(filas, merges) {
     });
   }
 
+  // Onvio deja pedir el reporte con las cuentas saldadas incluidas, y hay que pedirlo asi.
+  //
+  // El reporte corto omite las cuentas con saldo CERO, y "cero" lo mide en pesos. Hay cuentas
+  // de resultado que cierran en cero en pesos y NO en reales, porque los movimientos del anio
+  // se convirtieron a tipos de cambio distintos y no se cancelan: en agosto de 2026,
+  // "4212100000 FLETES" tiene $ 0,00 y R$ 3.356,67. Con el reporte corto esa plata no llega al
+  // informe en reales y el unico sintoma es la diferencia de cambio saliendo corta.
+  //
+  // Se reconoce por lo que le falta: en el reporte largo hay cientos de cuentas con el saldo en
+  // pesos en cero; en el corto no hay ninguna, porque son justo las que saca.
+  const enCeroEnPesos = cuentas.filter(c => !c.saldo_ars).length;
+  const pareceReporteCorto = cuentas.length > 0 && enCeroEnPesos === 0;
+
   return {
     cuentas,
     columnas: cols,
     tcCierre: tc,
+    pareceReporteCorto,
+    cuentasEnCeroEnPesos: enCeroEnPesos,
     filaEncabezados: filaEnc,
     discrepanciasCapitulo: discrepancias,
     totales: {

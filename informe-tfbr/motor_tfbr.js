@@ -18,7 +18,21 @@ function emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo) {
   const matcheadas = []; // [{texto, saldo}] listas para escribir en el staging
   const sinMapear = [];  // cuentas del export sin fila correspondiente en el maestro
   const escritas = {};   // codigo -> saldo escrito, para el control cuenta por cuenta
+  // Las cuentas sin saldo no se pegan.
+  //
+  // El export de Onvio se puede pedir con las cuentas saldadas incluidas, y hace falta pedirlo
+  // asi: hay cuentas de resultado que cierran en CERO en pesos pero NO en reales, porque los
+  // movimientos del anio se convirtieron a tipos de cambio distintos y no se cancelan. El
+  // reporte corto las omite y esa plata desaparecia del informe en reales — en agosto de 2026,
+  // "4212100000 FLETES" por R$ 3.356,67.
+  //
+  // Pero ese export trae las 940 cuentas del plan, y pegar 850 renglones en cero no agrega
+  // nada: infla la zona de pegado y tapa el aviso de cuentas sin mapear con cientos de lineas.
+  // Se filtran por el saldo de ESTE archivo, que es lo correcto en las dos monedas: FLETES no
+  // entra en los informes en pesos (su saldo en pesos es cero) y si entra en los de reales.
+
   for (const c of cuentasExport) {
+    if (!c[campoSaldo]) continue;
     const enPlan = planDeCuentas[c.codigo];
     if (!enPlan) { sinMapear.push(c); continue; }
     matcheadas.push({ codigo: c.codigo, texto: enPlan.texto, saldo: c[campoSaldo] });

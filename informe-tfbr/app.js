@@ -364,6 +364,14 @@ async function onExportArchivo(periodo, ev) {
       }
       revisarListoParaProcesar();
     }
+    // El reporte corto de Onvio se come las cuentas de resultado que cierran en cero en pesos
+    // pero no en reales, y el unico sintoma seria la diferencia de cambio saliendo corta.
+    if (parsed.pareceReporteCorto) {
+      txt.textContent += ` · ⚠ parece el reporte SIN las cuentas saldadas: pedilo en Onvio con ` +
+                         `las cuentas en cero incluidas, si no se pierden las de resultado que ` +
+                         `cierran en cero en pesos y no en reales`;
+    }
+
     if (parsed.discrepanciasCapitulo.length) {
       txt.textContent += ` (⚠ ${parsed.discrepanciasCapitulo.length} discrepancia(s) de capítulo)`;
     }
