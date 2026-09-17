@@ -18,21 +18,7 @@ function emparejarConPlan(cuentasExport, planDeCuentas, campoSaldo) {
   const matcheadas = []; // [{texto, saldo}] listas para escribir en el staging
   const sinMapear = [];  // cuentas del export sin fila correspondiente en el maestro
   const escritas = {};   // codigo -> saldo escrito, para el control cuenta por cuenta
-  // Las cuentas sin saldo no se pegan.
-  //
-  // El export de Onvio se puede pedir con las cuentas saldadas incluidas, y hace falta pedirlo
-  // asi: hay cuentas de resultado que cierran en CERO en pesos pero NO en reales, porque los
-  // movimientos del anio se convirtieron a tipos de cambio distintos y no se cancelan. El
-  // reporte corto las omite y esa plata desaparecia del informe en reales — en agosto de 2026,
-  // "4212100000 FLETES" por R$ 3.356,67.
-  //
-  // Pero ese export trae las 940 cuentas del plan, y pegar 850 renglones en cero no agrega
-  // nada: infla la zona de pegado y tapa el aviso de cuentas sin mapear con cientos de lineas.
-  // Se filtran por el saldo de ESTE archivo, que es lo correcto en las dos monedas: FLETES no
-  // entra en los informes en pesos (su saldo en pesos es cero) y si entra en los de reales.
-
   for (const c of cuentasExport) {
-    if (!c[campoSaldo]) continue;
     const enPlan = planDeCuentas[c.codigo];
     if (!enPlan) { sinMapear.push(c); continue; }
     matcheadas.push({ codigo: c.codigo, texto: enPlan.texto, saldo: c[campoSaldo] });
@@ -126,6 +112,28 @@ function ampliarZonaDePegado(wb, layout, necesarias, log = () => {}) {
 function procesarMaestroTFBR({ wb, cuentasExport, campoSaldo, archivoId = null, altaAutomatica = true,
                               rotulosGuardados = null, cuentasAcumulado = null,
                               configuracion = null, log = () => {} }) {
+  // Las cuentas sin saldo se sacan ACA, antes que nada.
+  //
+  // El export de Onvio hay que pedirlo con las cuentas saldadas incluidas —hay cuentas de
+  // resultado que cierran en cero en pesos y no en reales, porque los movimientos del anio se
+  // convirtieron a tipos de cambio distintos y no se cancelan— pero eso trae las 940 cuentas
+  // del plan oficial. De esas, unas 700 no estan en el plan del maestro, y el alta automatica
+  // de mas abajo les insertaba una fila a cada una: cada insercion recorre las formulas de
+  // todas las hojas para reacomodarlas, asi que la pagina se colgaba.
+  //
+  // Un renglon en cero no aporta nada: el VLOOKUP de una cuenta que no se pego ya devuelve
+  // cero. Se filtra por el saldo de ESTE archivo, que es lo correcto en las dos monedas —
+  // "4212100000 FLETES" tiene $ 0,00 y R$ 3.356,67: no entra en los informes en pesos y si en
+  // los de reales.
+  const cuentasDelExport = cuentasExport;
+  cuentasExport = cuentasExport.filter(c => c[campoSaldo]);
+  const sinSaldo = cuentasDelExport.length - cuentasExport.length;
+  if (sinSaldo) {
+    log(`  ${sinSaldo} cuenta(s) del export vienen sin saldo en este archivo y no se pegan ` +
+        `(de ${cuentasDelExport.length}, quedan ${cuentasExport.length}).`);
+  }
+
+
   // Primero de todo: poner el plan de cuentas de SALDOS de acuerdo con el plan oficial. Corrige
   // los códigos tipeados con un dígito de menos y junta las filas que quedan repetidas. Va
   // antes que cualquier otra cosa porque cambia a qué fila resuelve cada código, que es lo que
