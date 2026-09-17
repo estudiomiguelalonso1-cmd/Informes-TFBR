@@ -214,6 +214,32 @@ function pfUbicarLineaDifCambio(ws, layout) {
   return null;
 }
 
+// Cuanto tiene que decir la linea "DIFERENCIA DE CAMBIO": lo que sobra de sumar el plan.
+//
+// Es un residuo, no un dato: las cuentas patrimoniales entran al tipo de cambio de cierre y las
+// de resultado a los suyos, asi que la suma de todas no da cero, y lo que sobra ES la diferencia
+// de cambio del periodo. Por eso se puede calcular y no hace falta tipearla.
+//
+// Verificado contra los informes de julio 2026 que hizo contaduria: el residuo del Mensual R$
+// da 3.231,78 y es exactamente lo que tiene tipeada la fila de JULIO del cuadro; el del
+// Acumulado R$ da 107.528,26 y es exactamente el total del cuadro y lo que tiene la linea.
+//
+// Se suman las cuentas que el motor EMPAREJO (lo que quedo en `escritas`), no las del
+// export: una cuenta que el export trae
+// (En el Acumulado R$ de julio hay una, 4230400000, y contarla se iba 65,43.) Y se suman los
+// renglones del plan que llevan un numero escrito a mano, que tambien entran en los subtotales.
+function pfResiduoDelPlan(ws, layout, escritas, filaExcluida) {
+  let total = 0;
+  for (const saldo of Object.values(escritas || {})) total += saldo || 0;
+
+  for (let r = layout.planDeCuentas.desde; r <= layout.planDeCuentas.hasta; r++) {
+    if (r === filaExcluida) continue;
+    const v = ws.getCell(r, layout.saldoCol).value;
+    if (typeof v === "number") total += v;
+  }
+  return total;
+}
+
 function pfEscribirLineaDifCambio(ws, layout, linea, valor, log) {
   // Acreedora el importe, y la columna del saldo el mismo número con el signo cambiado, que es
   // como está escrita la línea en los dos archivos.
@@ -238,7 +264,8 @@ function pfTotalDelCuadro(ws, cuadro) {
   return hubo ? total : null;
 }
 
-function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierre }, log = () => {}) {
+function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierre, escritas,
+                                     difCambioDelMes = null }, log = () => {}) {
   const ws = wb.getWorksheet("SALDOS");
   const layout0 = derivarLayoutSaldos(wb);
   const [anioStr, mesStr] = String(periodo).split("-");
@@ -268,10 +295,39 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierr
     log(`  TC de cierre: ${tcCierre}.`);
   }
 
+  // La diferencia de cambio del mes: calculada, salvo que la hayan tipeado.
+  //
+  // La calculada es el residuo del plan del Mensual R$ —lo que sobra de sumar todas las cuentas
+  // ya convertidas— y viene de afuera (`difCambioDelMes`) porque el cuadro de meses esta en el
+  // Acumulado R$ pero la cifra del mes es la del Mensual. Ver pfResiduoDelPlan.
+  //
+  // Si igual la tipearon, gana lo tipeado y se avisa cuando no coinciden: forzar un numero es
+  // una decision valida, pasar de largo una diferencia entre los dos no.
+  const lineaDif = pfUbicarLineaDifCambio(ws, layout0);
+  const residuo = escritas
+    ? pfResiduoDelPlan(ws, layout0, escritas, lineaDif ? lineaDif.fila : null)
+    : null;
+  const tipeada = ptNumeroTipeado(difCambioMes);
+  // Si nadie la pasa de afuera, la del propio archivo. Eso es lo que pasa en el Mensual R$,
+  // que es justamente el que la calcula; el Acumulado R$ la recibe del Mensual porque su
+  // cuadro necesita la cifra del MES y el residuo de ese archivo es la del año.
+  const calculada = (difCambioDelMes === null || difCambioDelMes === undefined)
+    ? residuo : difCambioDelMes;
+  const delMes = tipeada !== null ? tipeada : calculada;
+  if (tipeada !== null && calculada !== null && Math.abs(tipeada - calculada) > 0.01) {
+    pendiente.push(
+      `La diferencia de cambio que cargaste (${tipeada.toFixed(2)}) no coincide con la que sale ` +
+      `de las cuentas (${calculada.toFixed(2)}). Usé la tuya. Si no la querías forzar, dejá el ` +
+      `campo vacío y la calcula sola.`
+    );
+  } else if (tipeada === null && calculada !== null) {
+    log(`  Diferencia de cambio del mes, calculada de las cuentas: ${calculada.toFixed(2)}.`);
+  }
+
   const cuadro = ubicarCuadroDifCambio(ws);
   if (cuadro) {
     const fila = cuadro.filas.find(f => f.mes === mes);
-    const valor = ptNumeroTipeado(difCambioMes);
+    const valor = delMes;
     if (fila && valor !== null) {
       ws.getCell(fila.fila, cuadro.colValor).value = valor;
       hecho.push(`Diferencia de cambio de ${fila.etiqueta}: ${valor}`);
@@ -307,14 +363,27 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierr
   // importe del mes: es lo que estaba escrito a mano y lo que el control de la propia planilla
   // verifica. Donde no hay cuadro —el Mensual R$— lleva el importe del mes, que es lo que ese
   // informe muestra.
-  const linea = pfUbicarLineaDifCambio(ws, layout0);
+  const linea = lineaDif;
   if (linea) {
-    const valorMes = ptNumeroTipeado(difCambioMes);
+    const valorMes = delMes;
     if (cuadro) {
       const total = pfTotalDelCuadro(ws, cuadro);
       if (total !== null) {
         pfEscribirLineaDifCambio(ws, layout0, linea, total, log);
         hecho.push(`Línea "DIFERENCIA DE CAMBIO" actualizada al acumulado del cuadro: ${total.toFixed(2)}`);
+
+        // El total del cuadro y el residuo de este archivo tienen que ser la misma cosa: los
+        // dos son la diferencia de cambio acumulada del año. Si se separan, hay una cuenta que
+        // el informe tiene y el export no trae —o al revés— y el importe de algun mes quedo
+        // corto. Es un aviso, no un freno: el balance cierra igual porque la linea lleva el
+        // total del cuadro; lo que no cierra es de donde sale ese total.
+        if (residuo !== null && Math.abs(total - residuo) > 0.05) {
+          pendiente.push(
+            `El cuadro de dif de cambio suma ${total.toFixed(2)} y las cuentas de este archivo ` +
+            `dan ${residuo.toFixed(2)} (${(total - residuo).toFixed(2)} de diferencia). ` +
+            `Suele ser una cuenta que el informe tiene pegada y el export no trae.`
+          );
+        }
       }
     } else if (valorMes !== null) {
       pfEscribirLineaDifCambio(ws, layout0, linea, valorMes, log);
@@ -327,7 +396,7 @@ function escribirDatosDelPeriodo(wb, { periodo, tcCierre, difCambioMes, diaCierr
     }
   }
 
-  return { hecho, pendiente, tieneTc: !!tc, tieneCuadro: !!cuadro, tieneLinea: !!linea };
+  return { hecho, pendiente, tieneTc: !!tc, tieneCuadro: !!cuadro, tieneLinea: !!linea, residuo };
 }
 
 if (typeof module !== "undefined") {
@@ -342,7 +411,7 @@ if (typeof module !== "undefined") {
   global.ptNumeroTipeado = require("./parser_tfbr.js").ptNumeroTipeado;
   module.exports = {
     MESES_ES, ubicarTcCierre, ubicarCuadroDifCambio, escribirDatosDelPeriodo,
-    pfUbicarLineaDifCambio, pfTotalDelCuadro,
+    pfUbicarLineaDifCambio, pfTotalDelCuadro, pfResiduoDelPlan,
     pfAvisoFaltaFilaMes, pfColLetra, pfEtiquetaDelMes, pfInsertarFilaDelMes,
   };
 }
