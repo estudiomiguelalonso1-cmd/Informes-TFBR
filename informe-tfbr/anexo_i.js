@@ -70,6 +70,77 @@ function quitarDuplicadosAnexoI(wb, layout, log = () => {}) {
   return sacados;
 }
 
+// El "Bienes de uso" del EESP tiene que salir del Anexo I, en los cuatro archivos.
+//
+// De los cuatro, el Mensual $ era el unico que no lo hacia: su EESP leia "+SALDOS!E47", que es
+// un subtotal de amortizaciones, y mostraba -2.485.298,32 —un activo en negativo— mientras su
+// propio Anexo I decia 82.447.582,24. Los otros tres ya leen "+'Anexo I'!K<total>".
+//
+// No se escribe la direccion: el motor inserta filas y las celdas se mueven. Se busca el
+// renglon por su texto en el EESP y el total por la columna de neto resultante del anexo.
+
+function aiColumnaNeto(ax, ubic) {
+  // El neto resultante es la ultima columna con importe en los renglones del anexo.
+  let ultima = null;
+  for (let c = ubic.colConcepto + 1; c <= ubic.colConcepto + 16; c++) {
+    for (const fila of Object.values(ubic.filas)) {
+      const v = ax.getCell(fila, c).value;
+      const esImporte = typeof v === "number" ||
+        (v && typeof v === "object" && typeof v.formula === "string");
+      if (esImporte) { ultima = c; break; }
+    }
+  }
+  return ultima;
+}
+
+function aiFilaTotal(ax, ubic, colNeto) {
+  const ultimoRenglon = Math.max(...Object.values(ubic.filas));
+  for (let r = ultimoRenglon + 1; r <= ultimoRenglon + 6; r++) {
+    const f = ctFormulaDe(ax, r, colNeto);
+    if (f && /^SUM\(/i.test(f.trim())) return r;
+  }
+  return null;
+}
+
+// Devuelve lo que hizo, o null si no habia nada que cambiar.
+function apuntarBienesDeUsoAlAnexo(wb, ubic, log = () => {}) {
+  const ax = wb.getWorksheet("Anexo I");
+  const es = wb.getWorksheet("EESP");
+  if (!ax || !es || !ubic) return null;
+
+  const colNeto = aiColumnaNeto(ax, ubic);
+  if (colNeto === null) return null;
+  const filaTotal = aiFilaTotal(ax, ubic, colNeto);
+  if (filaTotal === null) {
+    log("  ⚠ EESP: no encontre la fila de total del Anexo I; deje 'Bienes de uso' como estaba.");
+    return null;
+  }
+
+  const destino = `+'Anexo I'!${ctColNumeroALetra(colNeto)}${filaTotal}`;
+
+  for (let r = 1; r <= es.rowCount; r++) {
+    for (let c = 1; c <= 8; c++) {
+      // Por prefijo, no por igualdad: cada archivo lo rotula distinto —"Bienes de uso",
+      // "Bienes de uso (Anexo I)" y, en el Mensual R$, "Bienes de uso (Anexo l )" con ele.
+      if (!aiNorm(aiTexto(es, r, c)).startsWith("BIENES DE USO")) continue;
+      // El importe es la primera celda a la derecha del rotulo que tenga formula o numero.
+      for (let k = c + 1; k <= c + 8; k++) {
+        const v = es.getCell(r, k).value;
+        const esImporte = typeof v === "number" ||
+          (v && typeof v === "object" && typeof v.formula === "string");
+        if (!esImporte) continue;
+        const antes = (v && typeof v === "object" && v.formula) ? "+" + v.formula.replace(/^\+/, "") : String(v);
+        if (antes === destino) return null;
+        es.getCell(r, k).value = { formula: destino };
+        log(`  EESP ${ctColNumeroALetra(k)}${r} "Bienes de uso": ahora lee ${destino} ` +
+            `(antes "${antes}").`);
+        return { celda: ctColNumeroALetra(k) + r, antes, ahora: destino };
+      }
+    }
+  }
+  return null;
+}
+
 function aiNorm(t) {
   return String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
     .toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
@@ -170,13 +241,15 @@ function completarAnexoI(wb, layout, { escritas, cuentasAcumulado, campoSaldo },
     }
   }
 
+  const bienesDeUso = apuntarBienesDeUsoAlAnexo(wb, ubic, log);
+
   const modo = porFormula ? "fórmula" : "valor";
   if (hechos.length) {
     log(`  Anexo I: ${hechos.length} renglón(es) de bienes de uso cargados por ${modo} ` +
         `(valor de origen, columna ${ctColNumeroALetra(ubic.colOrigen)}).`);
   }
   for (const s of salteados) log(`  ⚠ Anexo I "${s.rotulo}": ${s.motivo}.`);
-  return { hechos, salteados, modo, duplicados };
+  return { hechos, salteados, modo, duplicados, bienesDeUso };
 }
 
 if (typeof module !== "undefined") {
@@ -184,8 +257,10 @@ if (typeof module !== "undefined") {
   global.leerPlanDeCuentas = cfg.leerPlanDeCuentas;
   global.ctFormulaNetaAnexo = cfg.ctFormulaNetaAnexo;
   global.ctColNumeroALetra = cfg.ctColNumeroALetra;
+  global.ctFormulaDe = cfg.ctFormulaDe;
   global.rtQuitarTermino = require("./rotulos_anexo.js").rtQuitarTermino;
   module.exports = {
     ANEXO_I_RENGLONES, ANEXO_I_A_QUITAR, aiUbicar, completarAnexoI, quitarDuplicadosAnexoI,
+    apuntarBienesDeUsoAlAnexo, aiColumnaNeto, aiFilaTotal,
   };
 }

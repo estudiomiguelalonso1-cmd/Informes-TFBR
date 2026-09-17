@@ -228,6 +228,6 @@ function ctColSaldoDeFila(ws, fila, layout) {
 if (typeof module !== "undefined") {
   module.exports = {
     derivarLayoutSaldos, leerPlanDeCuentas, ctLeerVlookup, ctFormulaSaldo,
-    ctFormulaNetaAnexo, ctColLetraANumero, ctColNumeroALetra,
+    ctFormulaNetaAnexo, ctColLetraANumero, ctColNumeroALetra, ctFormulaDe,
   };
 }
