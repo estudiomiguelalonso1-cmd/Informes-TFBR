@@ -198,12 +198,39 @@ function uniformarFormatoDeBloques(wb, layout, log = () => {}) {
     if (!mapa || mapa.renglones.length < 2) continue;
 
     const filas = mapa.renglones.map(r => r.fila).sort((a, b) => a - b);
-    const desde = filas[0], hasta = filas[filas.length - 1];
+    const desde = filas[0];
+
+    // El bloque se estira hacia abajo mientras haya filas con contenido. Un renglon que el
+    // motor agrega DESPUES del ultimo del mapa —el caso de "Alquileres" al final del Anexo II
+    // del Acumulado $— caia fuera del rango y se quedaba sin tipografia. Se corta en la
+    // primera fila vacia, que es donde termina el cuadro.
+    let hasta = filas[filas.length - 1];
+    while (hasta < ws.rowCount) {
+      let tieneAlgo = false;
+      for (let c = 1; c <= ws.columnCount && !tieneAlgo; c++) {
+        if (ws.getCell(hasta + 1, c).value != null) tieneAlgo = true;
+      }
+      if (!tieneAlgo) break;
+      hasta++;
+    }
     // Las columnas del bloque: la del rótulo y las de importe.
     const cols = new Set(mapa.colsImporte);
     for (const r of mapa.renglones) {
       const c = chCeldaDelRotulo(ws, r.fila, r.cols.length ? r.cols[0].col : mapa.colsImporte[0]);
       if (c) cols.add(c.col);
+    }
+
+    // Y cualquier otra columna con contenido dentro del bloque. La del total por fila del
+    // Anexo II —"SUM(D9:F9)", la suma de los tres centros de costo— no es ni el rotulo ni un
+    // centro de costo, asi que no entraba por ninguno de los dos caminos de arriba: las filas
+    // que agrega el motor quedaban ahi sin tipografia, y Excel las dibuja en la fuente por
+    // defecto del libro, que no es la del informe. Copiarle el formato a una celda que no
+    // tiene ninguno no puede romper nada.
+    for (let col = 1; col <= ws.columnCount; col++) {
+      if (cols.has(col)) continue;
+      for (let f = desde; f <= hasta; f++) {
+        if (ws.getCell(f, col).value != null) { cols.add(col); break; }
+      }
     }
 
     for (const col of cols) {
